@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sundari Care & Nursing Home</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section id="loginScreen" class="login-screen">
+      <form id="loginForm" class="login-card">
+        <div class="brand login-brand">
+          <div class="brand-mark">SC</div>
+          <div>
+            <h1>Sundari Care</h1>
+            <p>Nursing Home</p>
+          </div>
+        </div>
+        <div>
+          <h2>Secure Login</h2>
+          <p class="muted">Use role-based access for admin, doctor, reception and pharmacy.</p>
+        </div>
+        <label>Email<input name="email" type="email" required value="admin@sundaricare.local" /></label>
+        <label>Password<input name="password" type="password" required value="demo123" /></label>
+        <button class="primary-button" type="submit">Login</button>
+        <p id="loginError" class="error-text"></p>
+        <p class="muted small">Demo: admin@sundaricare.local / demo123</p>
+      </form>
+    </section>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">SC</div>
+          <div>
+            <h1>Sundari Care</h1>
+            <p>Nursing Home</p>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Main navigation">
+          <button class="nav-item active" data-view="dashboard">Dashboard</button>
+          <button class="nav-item" data-view="patients">Patients</button>
+          <button class="nav-item" data-view="doctor">Doctor</button>
+          <button class="nav-item" data-view="billing">Billing</button>
+          <button class="nav-item" data-view="pharmacy">Pharmacy</button>
+          <button class="nav-item" data-view="ipd">IPD</button>
+          <button class="nav-item" data-view="reports">Reports</button>
+          <button class="nav-item" data-view="admin">Admin</button>
+        </nav>
+
+        <div class="profile-card">
+          <span class="status-dot"></span>
+          <div>
+            <strong>Admin Login</strong>
+            <p id="userRoleLabel">Full access</p>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Clinic Management Suite</p>
+            <h2 id="page-title">Dashboard</h2>
+          </div>
+          <div class="top-actions">
+            <button class="icon-button" id="printBtn" title="Print current view">Print</button>
+            <button class="icon-button" id="backupBtn" title="Download data backup">Backup</button>
+            <button class="icon-button" id="logoutBtn" title="Logout">Logout</button>
+            <button class="primary-button" data-view-target="patients">New Patient</button>
+          </div>
+        </header>
+
+        <section id="dashboard" class="view active">
+          <div class="metric-grid">
+            <article class="metric">
+              <span>OPD Today</span>
+              <strong id="metricVisits">0</strong>
+              <p>Registered consultations</p>
+            </article>
+            <article class="metric">
+              <span>Collection</span>
+              <strong id="metricRevenue">Rs 0</strong>
+              <p>Billing and pharmacy</p>
+            </article>
+            <article class="metric">
+              <span>Low Stock</span>
+              <strong id="metricLowStock">0</strong>
+              <p>Medicines need reorder</p>
+            </article>
+            <article class="metric">
+              <span>Due Amount</span>
+              <strong id="metricDue">Rs 0</strong>
+              <p>Pending patient payments</p>
+            </article>
+          </div>
+
+          <div class="content-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Today's Queue</h3>
+                <button class="text-button" data-view-target="doctor">Open Doctor Panel</button>
+              </div>
+              <div id="queueList" class="list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Pharmacy Alerts</h3>
+                <button class="text-button" data-view-target="pharmacy">Manage Stock</button>
+              </div>
+              <div id="stockAlerts" class="list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="patients" class="view">
+          <div class="split">
+            <form id="patientForm" class="panel form-panel">
+              <h3>Patient Registration</h3>
+              <div class="form-grid">
+                <label>Name<input name="name" required placeholder="Patient name" /></label>
+                <label>Age<input name="age" type="number" min="0" required placeholder="Age" /></label>
+                <label>Gender<select name="gender"><option>Female</option><option>Male</option><option>Other</option></select></label>
+                <label>Mobile<input name="mobile" required placeholder="Mobile number" /></label>
+                <label>Address<input name="address" placeholder="Address" /></label>
+                <label>Doctor<select name="doctor"><option>Dr. Sharma</option><option>Dr. Verma</option><option>Dr. Singh</option></select></label>
+              </div>
+              <button class="primary-button" type="submit">Register Patient</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Patient Records</h3>
+                <input id="patientSearch" class="search" placeholder="Search patient" />
+              </div>
+              <div id="patientList" class="table-wrap"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="doctor" class="view">
+          <div class="split doctor-layout">
+            <section class="panel">
+              <h3>Consultation Queue</h3>
+              <div id="doctorQueue" class="list"></div>
+            </section>
+
+            <form id="prescriptionForm" class="panel form-panel">
+              <div class="panel-head">
+                <h3>Prescription</h3>
+                <span id="selectedPatientBadge" class="badge">Select patient</span>
+              </div>
+              <div class="form-grid">
+                <label>Symptoms<textarea name="symptoms" placeholder="Fever, cough, weakness"></textarea></label>
+                <label>Diagnosis<textarea name="diagnosis" placeholder="Clinical diagnosis"></textarea></label>
+                <label>Vitals<input name="vitals" placeholder="BP 120/80, Pulse 78, Temp 98.6" /></label>
+                <label>Medicines<textarea name="medicines" placeholder="Medicine - dose - duration"></textarea></label>
+                <label>Tests<input name="tests" placeholder="CBC, Sugar, X-Ray" /></label>
+                <label>Follow-up<input name="followup" type="date" /></label>
+              </div>
+              <button class="primary-button" type="submit">Save Prescription</button>
+            </form>
+          </div>
+
+          <section class="panel section-gap">
+            <h3>Recent Prescriptions</h3>
+            <div id="prescriptionList" class="table-wrap"></div>
+          </section>
+        </section>
+
+        <section id="billing" class="view">
+          <div class="split">
+            <form id="billForm" class="panel form-panel">
+              <h3>Create Bill</h3>
+              <div class="form-grid">
+                <label>Patient<select name="patient" id="billPatient"></select></label>
+                <label>Service<select name="service"><option>OPD Consultation</option><option>Procedure</option><option>Dressing</option><option>IPD Advance</option></select></label>
+                <label>Amount<input name="amount" type="number" min="0" required value="500" /></label>
+                <label>Discount<input name="discount" type="number" min="0" value="0" /></label>
+                <label>Paid<input name="paid" type="number" min="0" required value="500" /></label>
+                <label>Mode<select name="mode"><option>Cash</option><option>UPI</option><option>Card</option></select></label>
+              </div>
+              <button class="primary-button" type="submit">Generate Receipt</button>
+            </form>
+
+            <section class="panel">
+              <h3>Recent Bills</h3>
+              <div id="billList" class="table-wrap"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="pharmacy" class="view">
+          <div class="pharmacy-grid">
+            <form id="medicineForm" class="panel form-panel">
+              <h3>Medicine Stock</h3>
+              <div class="form-grid">
+                <label>Medicine<input name="name" required placeholder="Medicine name" /></label>
+                <label>Batch<input name="batch" required placeholder="Batch no." /></label>
+                <label>Expiry<input name="expiry" type="month" required /></label>
+                <label>Stock<input name="stock" type="number" min="0" required value="20" /></label>
+                <label>Sale Rate<input name="rate" type="number" min="0" required value="80" /></label>
+                <label>Supplier<input name="supplier" placeholder="Supplier" /></label>
+              </div>
+              <button class="primary-button" type="submit">Add Medicine</button>
+            </form>
+
+            <form id="pharmacySaleForm" class="panel form-panel">
+              <h3>Pharmacy Sale</h3>
+              <div class="form-grid single">
+                <label>Patient<select name="patient" id="pharmacyPatient"></select></label>
+                <label>Medicine<select name="medicine" id="saleMedicine"></select></label>
+                <label>Quantity<input name="qty" type="number" min="1" required value="1" /></label>
+                <label>Discount<input name="discount" type="number" min="0" value="0" /></label>
+                <label>Mode<select name="mode"><option>Cash</option><option>UPI</option><option>Card</option></select></label>
+              </div>
+              <button class="primary-button" type="submit">Generate Pharmacy Bill</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Inventory</h3>
+                <button class="text-button" id="seedMeds">Load Sample Stock</button>
+              </div>
+              <div id="medicineList" class="table-wrap"></div>
+            </section>
+          </div>
+
+          <section class="panel section-gap">
+            <h3>Recent Pharmacy Sales</h3>
+            <div id="pharmacySaleList" class="table-wrap"></div>
+          </section>
+        </section>
+
+        <section id="ipd" class="view">
+          <div class="split">
+            <form id="admissionForm" class="panel form-panel">
+              <h3>IPD Admission</h3>
+              <div class="form-grid">
+                <label>Patient<select name="patient" id="admissionPatient"></select></label>
+                <label>Ward<select name="ward"><option>General Ward</option><option>Private Room</option><option>Emergency</option><option>Maternity</option></select></label>
+                <label>Bed No.<input name="bed" required placeholder="Bed / Room number" /></label>
+                <label>Doctor<select name="doctor"><option>Dr. Sharma</option><option>Dr. Verma</option><option>Dr. Singh</option></select></label>
+                <label>Admission Reason<textarea name="reason" placeholder="Reason for admission"></textarea></label>
+                <label>Deposit<input name="deposit" type="number" min="0" value="2000" /></label>
+              </div>
+              <button class="primary-button" type="submit">Admit Patient</button>
+            </form>
+
+            <section class="panel">
+              <h3>Current Admissions</h3>
+              <div id="admissionList" class="table-wrap"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="reports" class="view">
+          <div class="content-grid">
+            <section class="panel">
+              <h3>Financial Summary</h3>
+              <div id="financialReport" class="report-grid"></div>
+            </section>
+
+            <form id="expenseForm" class="panel form-panel">
+              <h3>Expense Entry</h3>
+              <div class="form-grid">
+                <label>Title<input name="title" required placeholder="Expense title" /></label>
+                <label>Category<select name="category"><option>Operations</option><option>Salary</option><option>Medicine Purchase</option><option>Maintenance</option></select></label>
+                <label>Amount<input name="amount" type="number" min="0" required /></label>
+                <label>Date<input name="date" type="date" /></label>
+              </div>
+              <button class="primary-button" type="submit">Save Expense</button>
+            </form>
+          </div>
+
+          <section class="panel section-gap">
+            <h3>Audit Log</h3>
+            <div id="auditList" class="table-wrap"></div>
+          </section>
+        </section>
+
+        <section id="admin" class="view">
+          <div class="content-grid">
+            <form id="userForm" class="panel form-panel">
+              <h3>Create Staff User</h3>
+              <div class="form-grid">
+                <label>Name<input name="name" required placeholder="Staff name" /></label>
+                <label>Email<input name="email" type="email" required placeholder="staff@sundaricare.local" /></label>
+                <label>Role<select name="role"><option>Reception</option><option>Doctor</option><option>Pharmacy</option><option>Nurse</option><option>Accountant</option><option>Admin</option></select></label>
+                <label>Password<input name="password" type="password" required minlength="6" placeholder="Minimum 6 characters" /></label>
+              </div>
+              <button class="primary-button" type="submit">Create User</button>
+              <p id="userFormMessage" class="form-message"></p>
+            </form>
+
+            <form id="passwordForm" class="panel form-panel">
+              <h3>Change My Password</h3>
+              <div class="form-grid">
+                <label>Current Password<input name="currentPassword" type="password" required /></label>
+                <label>New Password<input name="newPassword" type="password" required minlength="6" /></label>
+              </div>
+              <button class="primary-button" type="submit">Update Password</button>
+              <p id="passwordFormMessage" class="form-message"></p>
+            </form>
+          </div>
+
+          <section class="panel section-gap">
+            <h3>Staff Users</h3>
+            <div id="userList" class="table-wrap"></div>
+          </section>
+
+          <div class="content-grid section-gap">
+            <section class="panel">
+              <h3>Role Access</h3>
+              <div class="permission-grid">
+                <label><input type="checkbox" checked /> Admin full access</label>
+                <label><input type="checkbox" checked /> Doctor prescription</label>
+                <label><input type="checkbox" checked /> Reception billing</label>
+                <label><input type="checkbox" checked /> Pharmacy inventory</label>
+                <label><input type="checkbox" checked /> Nursing IPD notes</label>
+                <label><input type="checkbox" /> Accountant reports only</label>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h3>Premium Roadmap</h3>
+              <div class="roadmap">
+                <span>Phase 1: OPD, billing, doctor, pharmacy</span>
+                <span>Phase 2: IPD, beds, nursing, discharge summary</span>
+                <span>Phase 3: WhatsApp, cloud backup, analytics</span>
+                <span>Phase 4: Patient portal and mobile app</span>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <section id="printModal" class="modal" aria-hidden="true">
+      <div class="modal-card">
+        <div class="panel-head">
+          <h3 id="printTitle">Print Preview</h3>
+          <div class="top-actions">
+            <button class="icon-button" id="modalPrintBtn">Print</button>
+            <button class="icon-button" id="modalCloseBtn">Close</button>
+          </div>
+        </div>
+        <div id="printDocument" class="print-document"></div>
+      </div>
+    </section>
+
+    <script src="app.js"></script>
+  </body>
+</html>

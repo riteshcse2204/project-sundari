@@ -1,0 +1,164 @@
+{
+  "users": [
+    {
+      "id": "USR-1",
+      "name": "Sundari Admin",
+      "email": "admin@sundaricare.local",
+      "role": "Admin",
+      "passwordSalt": "be1c9a87b74fc83bb1f25b4a2fffb70c",
+      "passwordHash": "d589774ffbbff4e96652daaf03d74002538c2d1db0295ec4dfb45c219113f3a77dcca27ae0d8b8662b2ea6cd8cada728e11b54caac1eb13d0e963d5ecacbc8b2"
+    },
+    {
+      "id": "USR-2",
+      "name": "Dr. Sharma",
+      "email": "doctor@sundaricare.local",
+      "role": "Doctor",
+      "passwordSalt": "08befaa459080391d4ee45906473a0a4",
+      "passwordHash": "01732475800fee66d2d1698c6cde043c762241707f1a04b3aa5e5ad54d64533184bdb20aa30bda66cde16eacacd9a8271e9bb82cc9502612be4e3bf2a142d6df"
+    },
+    {
+      "id": "USR-3",
+      "name": "Reception Desk",
+      "email": "reception@sundaricare.local",
+      "role": "Reception",
+      "passwordSalt": "c6ad394a84ba98399b24aeb9be5877b7",
+      "passwordHash": "91abe8caef4990aa185c34f17bb4cdeebb663928b9332e596e49d49e8234f5759f7ed2ead4c11c90cd42eff144634046d7e9a4c342215ccb6a97a99311a026cc"
+    },
+    {
+      "id": "USR-4",
+      "name": "Pharmacy Desk",
+      "email": "pharmacy@sundaricare.local",
+      "role": "Pharmacy",
+      "passwordSalt": "a0eedf79d18a4e14e503b2c6b167ab3f",
+      "passwordHash": "4f6d258f10cf8b027df5e72f26867f064127c77f4d72e5c77f4147e62469a4f0a54901717a99ce7ca835c7c96bba1969cbc7ffb8fd9a5c71c00dc4e39eba16ac"
+    },
+    {
+      "id": "USR-2711155",
+      "name": "QA Nurse 1779612711053",
+      "email": "qa-nurse-1779612711053@sundaricare.local",
+      "role": "Nurse",
+      "passwordSalt": "a634ddd4bac294002c102d155b79abe3",
+      "passwordHash": "607a4decc5abba485c5f6853e77cdb87748b4988af0614947aa8502c71fd7e5e896850801b5ae3c36aab7fe6e2721cff50397e3521109daf950293f7f5209951",
+      "isActive": true,
+      "createdAt": "2026-05-24T08:51:51.195Z"
+    }
+  ],
+  "patients": [
+    {
+      "id": "SC-1002",
+      "name": "Kavita Kumari",
+      "age": 31,
+      "gender": "Female",
+      "mobile": "8888888888",
+      "address": "Patna",
+      "doctor": "Dr. Sharma",
+      "createdBy": "Codex QA",
+      "status": "Waiting",
+      "createdAt": "2026-05-24T08:27:10.566Z"
+    },
+    {
+      "id": "SC-1001",
+      "name": "Anita Devi",
+      "age": 34,
+      "gender": "Female",
+      "mobile": "9876543210",
+      "address": "Patna",
+      "doctor": "Dr. Sharma",
+      "status": "Waiting",
+      "createdAt": "2026-05-24T08:00:00.000Z"
+    }
+  ],
+  "prescriptions": [],
+  "bills": [],
+  "pharmacySales": [
+    {
+      "id": "PH-1653342",
+      "patientId": "SC-1002",
+      "patientName": "Kavita Kumari",
+      "medicineId": "MED-1",
+      "medicineName": "Paracetamol 650",
+      "batch": "P650A",
+      "qty": 2,
+      "rate": 24,
+      "discount": 0,
+      "total": 48,
+      "mode": "Cash",
+      "date": "24/5/2026"
+    }
+  ],
+  "medicines": [
+    {
+      "id": "MED-1",
+      "name": "Paracetamol 650",
+      "batch": "P650A",
+      "expiry": "2027-04",
+      "stock": 16,
+      "rate": 24,
+      "supplier": "Care Pharma"
+    },
+    {
+      "id": "MED-2",
+      "name": "Azithromycin 500",
+      "batch": "AZ500",
+      "expiry": "2026-12",
+      "stock": 7,
+      "rate": 92,
+      "supplier": "Medline"
+    }
+  ],
+  "admissions": [
+    {
+      "id": "IPD-1238774",
+      "patientId": "SC-1002",
+      "patientName": "Kavita Kumari",
+      "status": "Admitted",
+      "admittedAt": "24/5/2026",
+      "patient": "SC-1002",
+      "ward": "General Ward",
+      "bed": "G-12",
+      "doctor": "Dr. Sharma",
+      "reason": "Observation and medication",
+      "deposit": 2000,
+      "createdBy": "Codex QA"
+    }
+  ],
+  "expenses": [
+    {
+      "id": "EXP-1",
+      "title": "Sanitization supplies",
+      "category": "Operations",
+      "amount": 1200,
+      "date": "2026-05-24"
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "LOG-2711195",
+      "user": "Sundari Admin",
+      "action": "Created user",
+      "entity": "qa-nurse-1779612711053@sundaricare.local",
+      "createdAt": "2026-05-24T08:51:51.195Z"
+    },
+    {
+      "id": "LOG-1653359",
+      "user": "Codex QA",
+      "action": "Pharmacy sale",
+      "entity": "PH-1653342",
+      "createdAt": "2026-05-24T08:34:13.359Z"
+    },
+    {
+      "id": "LOG-1238813",
+      "user": "Codex QA",
+      "action": "Admitted patient",
+      "entity": "IPD-1238774",
+      "createdAt": "2026-05-24T08:27:18.813Z"
+    },
+    {
+      "id": "LOG-1230566",
+      "user": "Codex QA",
+      "action": "Registered patient",
+      "entity": "SC-1002",
+      "createdAt": "2026-05-24T08:27:10.566Z"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "sundari-care-nursing-home",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Sundari Care & Nursing Home clinic management software",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
