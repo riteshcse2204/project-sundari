@@ -564,11 +564,13 @@ function letterhead(title, id, date) {
 function openPrintModal(title, html) {
   document.getElementById("printTitle").textContent = title;
   document.getElementById("printDocument").innerHTML = html;
+  document.body.classList.add("printing-modal");
   document.getElementById("printModal").classList.add("open");
   document.getElementById("printModal").setAttribute("aria-hidden", "false");
 }
 
 function closePrintModal() {
+  document.body.classList.remove("printing-modal");
   document.getElementById("printModal").classList.remove("open");
   document.getElementById("printModal").setAttribute("aria-hidden", "true");
 }

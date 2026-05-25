@@ -308,6 +308,16 @@ textarea {
   gap: 18px;
 }
 
+.billing-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+
+.billing-layout #billForm {
+  max-width: none;
+}
+
 .doctor-layout {
   grid-template-columns: 360px minmax(0, 1fr);
 }
@@ -595,6 +605,10 @@ textarea:focus {
   display: grid;
 }
 
+.printing-modal {
+  overflow: hidden;
+}
+
 .modal-card {
   width: min(900px, 100%);
   max-height: min(860px, 92vh);
@@ -737,12 +751,30 @@ textarea:focus {
   }
 }
 
+@page {
+  size: A4;
+  margin: 10mm;
+}
+
 @media print {
+  html,
+  body {
+    width: auto;
+    min-height: auto;
+    margin: 0;
+    background: white;
+  }
+
   .sidebar,
   .top-actions,
   .nav,
   button,
   .topbar {
+    display: none !important;
+  }
+
+  body.printing-modal .app-shell,
+  body.printing-modal .login-screen {
     display: none !important;
   }
 
@@ -761,6 +793,10 @@ textarea:focus {
     box-shadow: none;
   }
 
+  .modal-card > .panel-head {
+    display: none !important;
+  }
+
   .view,
   .panel,
   .metric {
@@ -772,5 +808,44 @@ textarea:focus {
     display: block !important;
     box-shadow: none;
     border: 0;
+  }
+
+  .modal.open {
+    width: 100%;
+  }
+
+  .modal-card {
+    width: 100%;
+  }
+
+  .print-document {
+    width: 100%;
+    padding: 0;
+    font-size: 11px;
+  }
+
+  .print-letterhead {
+    gap: 12px;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+  }
+
+  .print-letterhead h2 {
+    font-size: 18px;
+  }
+
+  .print-section {
+    margin-top: 10px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-section h4 {
+    margin-bottom: 5px;
+  }
+
+  .print-table th,
+  .print-table td {
+    padding: 5px 6px;
   }
 }
