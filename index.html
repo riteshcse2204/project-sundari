@@ -23,6 +23,11 @@
         <label>Email<input name="email" type="email" required value="admin@sundaricare.local" /></label>
         <label>Password<input name="password" type="password" required value="demo123" /></label>
         <button class="primary-button" type="submit">Login</button>
+        <div class="login-help">
+          <button class="text-button" type="button" data-login-note="account">Create account</button>
+          <button class="text-button" type="button" data-login-note="password">Forgot password?</button>
+        </div>
+        <p id="loginNote" class="login-note">Only Admin can create staff login IDs for doctor, reception, billing, pharmacy and nursing users.</p>
         <p id="loginError" class="error-text"></p>
         <p class="muted small">Demo: admin@sundaricare.local / demo123</p>
       </form>
@@ -209,13 +214,22 @@
 
             <form id="pharmacySaleForm" class="panel form-panel">
               <h3>Pharmacy Sale</h3>
-              <div class="form-grid single">
+              <div class="form-grid">
                 <label>Patient<select name="patient" id="pharmacyPatient"></select></label>
-                <label>Medicine<select name="medicine" id="saleMedicine"></select></label>
-                <label>Quantity<input name="qty" type="number" min="1" required value="1" /></label>
                 <label>Discount<input name="discount" type="number" min="0" value="0" /></label>
                 <label>Mode<select name="mode"><option>Cash</option><option>UPI</option><option>Card</option></select></label>
               </div>
+              <div class="sale-builder">
+                <div class="panel-head compact-head">
+                  <h4>Medicines in this bill</h4>
+                  <div class="top-actions">
+                    <button class="text-button" id="addStockSaleItem" type="button">Add Stock Medicine</button>
+                    <button class="text-button" id="addManualSaleItem" type="button">Add Manual Medicine</button>
+                  </div>
+                </div>
+                <div id="saleItems" class="sale-items"></div>
+              </div>
+              <div id="saleTotalPreview" class="total-preview">Total: Rs 0</div>
               <button class="primary-button" type="submit">Generate Pharmacy Bill</button>
             </form>
 

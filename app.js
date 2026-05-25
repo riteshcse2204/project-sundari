@@ -33,6 +33,13 @@ let currentSession = JSON.parse(localStorage.getItem(sessionKey) || "null");
 let currentUser = currentSession?.user || currentSession || null;
 let selectedPatientId = null;
 let apiOnline = true;
+let saleItemCounter = 0;
+
+const clinic = {
+  name: "Sundari Care & Nursing Home",
+  address: "New Bypass Road, East Ashokchak, Patna 800016",
+  phones: "9113420207, 9472655788, 6205471960"
+};
 
 const rolePermissions = {
   viewDashboard: ["Admin", "Doctor", "Reception", "Pharmacy", "Nurse", "Accountant"],
@@ -155,14 +162,19 @@ async function postData(path, payload, offlineHandler) {
     try {
       state = await api(path, { method: "POST", body: JSON.stringify(enriched) });
       renderAll();
-      return;
-    } catch {
+      return true;
+    } catch (error) {
+      if (error.status) {
+        alert(error.message);
+        return false;
+      }
       apiOnline = false;
     }
   }
   offlineHandler(enriched);
   saveOffline();
   renderAll();
+  return true;
 }
 
 function requireLogin() {
@@ -210,13 +222,35 @@ function medicineOptions() {
   return state.medicines.map((medicine) => `<option value="${medicine.id}">${medicine.name} | ${medicine.stock} in stock | ${currency(medicine.rate)}</option>`).join("");
 }
 
+function patientDetailDocument(patient) {
+  const patientBills = state.bills.filter((bill) => bill.patientId === patient.id);
+  const patientSales = (state.pharmacySales || []).filter((sale) => sale.patientId === patient.id);
+  const patientAdmissions = state.admissions.filter((admission) => admission.patientId === patient.id);
+  return `<div class="print-section">
+    <h4>Patient Details</h4>
+    <table class="print-table">
+      <tr><th>Name</th><td>${patient.name}</td></tr>
+      <tr><th>UHID</th><td>${patient.id}</td></tr>
+      <tr><th>Age / Gender</th><td>${patient.age} / ${patient.gender}</td></tr>
+      <tr><th>Mobile</th><td>${patient.mobile}</td></tr>
+      <tr><th>Address</th><td>${patient.address || "-"}</td></tr>
+      <tr><th>Doctor</th><td>${patient.doctor || "-"}</td></tr>
+      <tr><th>Status</th><td>${patient.status}</td></tr>
+      <tr><th>Registered</th><td>${patient.createdAt ? new Date(patient.createdAt).toLocaleString("en-IN") : "-"}</td></tr>
+      <tr><th>OPD Bills</th><td>${patientBills.length}</td></tr>
+      <tr><th>Pharmacy Bills</th><td>${patientSales.length}</td></tr>
+      <tr><th>Admissions</th><td>${patientAdmissions.length}</td></tr>
+    </table>
+  </div>`;
+}
+
 function renderPatients() {
   const query = document.getElementById("patientSearch")?.value?.toLowerCase() || "";
   const patients = state.patients.filter((patient) => `${patient.name} ${patient.mobile} ${patient.id}`.toLowerCase().includes(query));
   document.getElementById("patientList").innerHTML = patients.length
     ? `<table class="table"><thead><tr><th>Patient</th><th>Mobile</th><th>Doctor</th><th>Status</th><th>Action</th></tr></thead><tbody>${patients.map((patient) => `
       <tr>
-        <td><strong>${patient.name}</strong><span>${patient.id} | ${patient.age}/${patient.gender}</span></td>
+        <td><button class="link-button" data-patient-detail="${patient.id}" type="button"><strong>${patient.name}</strong><span>${patient.id} | ${patient.age}/${patient.gender}</span></button></td>
         <td>${patient.mobile}</td>
         <td>${patient.doctor}</td>
         <td><span class="badge">${patient.status}</span></td>
@@ -270,7 +304,11 @@ function renderBills() {
 }
 
 function renderMedicines() {
-  document.getElementById("saleMedicine").innerHTML = medicineOptions();
+  document.querySelectorAll(".sale-medicine").forEach((select) => {
+    const currentValue = select.value;
+    select.innerHTML = medicineOptions();
+    if (currentValue) select.value = currentValue;
+  });
   document.getElementById("medicineList").innerHTML = state.medicines.length
     ? `<table class="table"><thead><tr><th>Medicine</th><th>Batch</th><th>Expiry</th><th>Stock</th><th>Rate</th><th>Supplier</th></tr></thead><tbody>${state.medicines.map((medicine) => `
       <tr>
@@ -290,7 +328,7 @@ function renderPharmacySales() {
       <tr>
         <td><strong>${sale.id}</strong><span>${sale.date}</span></td>
         <td>${sale.patientName}</td>
-        <td>${sale.medicineName}<span>Batch ${sale.batch}</span></td>
+        <td>${sale.medicineName}<span>${sale.items?.length ? `${sale.items.length} items` : `Batch ${sale.batch}`}</span></td>
         <td>${sale.qty}</td>
         <td>${currency(sale.total)}</td>
         <td><button class="mini-button" data-print-pharmacy="${sale.id}">Print</button></td>
@@ -378,12 +416,69 @@ function resetForm(form) {
   if (dateInput) dateInput.value = today();
 }
 
+function addSaleItem(type = "stock") {
+  const itemId = `sale-item-${++saleItemCounter}`;
+  const isManual = type === "manual";
+  const row = document.createElement("div");
+  row.className = "sale-item";
+  row.dataset.saleItem = itemId;
+  row.dataset.type = type;
+  row.innerHTML = isManual
+    ? `<label>Manual Medicine<input data-sale-name placeholder="Medicine name" required /></label>
+      <label>Batch<input data-sale-batch placeholder="Manual / batch" /></label>
+      <label>Rate<input data-sale-rate type="number" min="0" value="0" required /></label>
+      <label>Qty<input data-sale-qty type="number" min="1" value="1" required /></label>
+      <button class="mini-button remove-sale-item" type="button">Remove</button>`
+    : `<label>Stock Medicine<select class="sale-medicine" data-sale-medicine required>${medicineOptions()}</select></label>
+      <label>Qty<input data-sale-qty type="number" min="1" value="1" required /></label>
+      <button class="mini-button remove-sale-item" type="button">Remove</button>`;
+  document.getElementById("saleItems").append(row);
+  updateSaleTotalPreview();
+}
+
+function collectSaleItems() {
+  return [...document.querySelectorAll("[data-sale-item]")].map((row) => {
+    const qty = Number(row.querySelector("[data-sale-qty]")?.value || 0);
+    if (row.dataset.type === "manual") {
+      return {
+        type: "manual",
+        name: row.querySelector("[data-sale-name]")?.value?.trim(),
+        batch: row.querySelector("[data-sale-batch]")?.value?.trim() || "Manual",
+        rate: Number(row.querySelector("[data-sale-rate]")?.value || 0),
+        qty
+      };
+    }
+    return {
+      type: "stock",
+      medicine: row.querySelector("[data-sale-medicine]")?.value,
+      qty
+    };
+  });
+}
+
+function saleItemAmount(item) {
+  if (item.type === "manual") return Number(item.qty || 0) * Number(item.rate || 0);
+  const medicine = state.medicines.find((entry) => entry.id === item.medicine);
+  return Number(item.qty || 0) * Number(medicine?.rate || 0);
+}
+
+function updateSaleTotalPreview() {
+  const discount = Number(document.querySelector("#pharmacySaleForm [name='discount']")?.value || 0);
+  const subtotal = collectSaleItems().reduce((sum, item) => sum + saleItemAmount(item), 0);
+  document.getElementById("saleTotalPreview").textContent = `Subtotal: ${currency(subtotal)} | Discount: ${currency(discount)} | Total: ${currency(Math.max(subtotal - discount, 0))}`;
+}
+
+function resetSaleItems() {
+  document.getElementById("saleItems").innerHTML = "";
+  addSaleItem("stock");
+}
+
 function letterhead(title, id, date) {
   return `<div class="print-letterhead">
     <div>
-      <h2>Sundari Care & Nursing Home</h2>
-      <p>Premium Clinic Management | OPD, IPD, Pharmacy</p>
-      <p>Clinic Road, Patna | Phone: 9876543210</p>
+      <h2>${clinic.name}</h2>
+      <p>${clinic.address}</p>
+      <p>Phone: ${clinic.phones}</p>
     </div>
     <div>
       <strong>${title}</strong>
@@ -427,11 +522,21 @@ function prescriptionDocument(prescription) {
 }
 
 function billDocument(bill) {
+  const patient = state.patients.find((item) => item.id === bill.patientId);
   return `${letterhead("Receipt", bill.id, bill.date)}
+    <div class="print-section">
+      <h4>Patient Details</h4>
+      <table class="print-table">
+        <tr><th>Patient</th><td>${bill.patientName}</td></tr>
+        <tr><th>UHID</th><td>${bill.patientId || "-"}</td></tr>
+        <tr><th>Age / Gender</th><td>${patient ? `${patient.age} / ${patient.gender}` : "-"}</td></tr>
+        <tr><th>Mobile</th><td>${patient?.mobile || "-"}</td></tr>
+        <tr><th>Address</th><td>${patient?.address || "-"}</td></tr>
+      </table>
+    </div>
     <div class="print-section">
       <h4>Billing Details</h4>
       <table class="print-table">
-        <tr><th>Patient</th><td>${bill.patientName}</td></tr>
         <tr><th>Service</th><td>${bill.service}</td></tr>
         <tr><th>Total</th><td>${currency(bill.total)}</td></tr>
         <tr><th>Paid</th><td>${currency(bill.paid)}</td></tr>
@@ -443,15 +548,43 @@ function billDocument(bill) {
 }
 
 function pharmacyDocument(sale) {
+  const patient = state.patients.find((item) => item.id === sale.patientId);
+  const items = sale.items?.length
+    ? sale.items
+    : [{
+        medicineName: sale.medicineName,
+        batch: sale.batch,
+        qty: sale.qty,
+        rate: sale.rate,
+        total: Number(sale.qty || 0) * Number(sale.rate || 0)
+      }];
   return `${letterhead("Pharmacy Bill", sale.id, sale.date)}
     <div class="print-section">
-      <h4>Sale Details</h4>
+      <h4>Patient Details</h4>
       <table class="print-table">
         <tr><th>Patient</th><td>${sale.patientName}</td></tr>
-        <tr><th>Medicine</th><td>${sale.medicineName}</td></tr>
-        <tr><th>Batch</th><td>${sale.batch}</td></tr>
-        <tr><th>Qty</th><td>${sale.qty}</td></tr>
-        <tr><th>Rate</th><td>${currency(sale.rate)}</td></tr>
+        <tr><th>UHID</th><td>${sale.patientId || "-"}</td></tr>
+        <tr><th>Age / Gender</th><td>${patient ? `${patient.age} / ${patient.gender}` : "-"}</td></tr>
+        <tr><th>Mobile</th><td>${patient?.mobile || "-"}</td></tr>
+      </table>
+    </div>
+    <div class="print-section">
+      <h4>Medicines</h4>
+      <table class="print-table">
+        <thead><tr><th>Medicine</th><th>Batch</th><th>Qty</th><th>Rate</th><th>Total</th></tr></thead>
+        <tbody>${items.map((item) => `<tr>
+          <td>${item.medicineName}</td>
+          <td>${item.batch || "-"}</td>
+          <td>${item.qty}</td>
+          <td>${currency(item.rate)}</td>
+          <td>${currency(item.total)}</td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </div>
+    <div class="print-section">
+      <h4>Payment</h4>
+      <table class="print-table">
+        <tr><th>Subtotal</th><td>${currency(sale.subtotal || items.reduce((sum, item) => sum + Number(item.total || 0), 0))}</td></tr>
         <tr><th>Discount</th><td>${currency(sale.discount)}</td></tr>
         <tr><th>Total</th><td>${currency(sale.total)}</td></tr>
         <tr><th>Mode</th><td>${sale.mode}</td></tr>
@@ -461,6 +594,15 @@ function pharmacyDocument(sale) {
 
 document.querySelectorAll("[data-view], [data-view-target]").forEach((control) => {
   control.addEventListener("click", () => setView(control.dataset.view || control.dataset.viewTarget));
+});
+
+document.querySelectorAll("[data-login-note]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const note = document.getElementById("loginNote");
+    note.textContent = button.dataset.loginNote === "account"
+      ? "New staff accounts are created only by Admin from Admin > Create Staff User. Admin can create IDs for doctor, reception, billing, pharmacy, nursing and accounts users."
+      : "For password reset, contact Admin. Admin can create a new staff login or update access from the Admin section.";
+  });
 });
 
 document.getElementById("loginForm").addEventListener("submit", async (event) => {
@@ -521,6 +663,20 @@ document.getElementById("patientForm").addEventListener("submit", async (event) 
 });
 
 document.addEventListener("click", (event) => {
+  const detailPatientId = event.target.closest("[data-patient-detail]")?.dataset.patientDetail;
+  if (detailPatientId) {
+    const patient = state.patients.find((item) => item.id === detailPatientId);
+    if (patient) openPrintModal("Patient Details", patientDetailDocument(patient));
+    return;
+  }
+
+  if (event.target.classList.contains("remove-sale-item")) {
+    event.target.closest("[data-sale-item]")?.remove();
+    if (!document.querySelector("[data-sale-item]")) addSaleItem("stock");
+    updateSaleTotalPreview();
+    return;
+  }
+
   const patientId = event.target.dataset.selectPatient;
   if (patientId) {
     selectedPatientId = patientId;
@@ -595,34 +751,69 @@ document.getElementById("medicineForm").addEventListener("submit", async (event)
   resetForm(form);
 });
 
+document.getElementById("addStockSaleItem").addEventListener("click", () => addSaleItem("stock"));
+document.getElementById("addManualSaleItem").addEventListener("click", () => addSaleItem("manual"));
+document.getElementById("pharmacySaleForm").addEventListener("input", updateSaleTotalPreview);
+document.getElementById("pharmacySaleForm").addEventListener("change", updateSaleTotalPreview);
+
 document.getElementById("pharmacySaleForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
-  const data = Object.fromEntries(new FormData(form));
-  await postData("/api/pharmacy-sales", data, (payload) => {
-    const medicine = state.medicines.find((item) => item.id === payload.medicine);
+  const data = { ...Object.fromEntries(new FormData(form)), items: collectSaleItems() };
+  if (!data.items.length) return;
+  const saved = await postData("/api/pharmacy-sales", data, (payload) => {
     const patient = state.patients.find((item) => item.id === payload.patient);
-    if (!medicine) return;
-    const qty = Number(payload.qty || 0);
-    const subtotal = qty * Number(medicine.rate || 0);
+    const items = payload.items.map((item) => {
+      if (item.type === "manual") {
+        return {
+          type: "manual",
+          medicineId: null,
+          medicineName: item.name,
+          batch: item.batch || "Manual",
+          qty: Number(item.qty || 0),
+          rate: Number(item.rate || 0),
+          total: Number(item.qty || 0) * Number(item.rate || 0)
+        };
+      }
+      const medicine = state.medicines.find((entry) => entry.id === item.medicine);
+      return {
+        type: "stock",
+        medicineId: medicine?.id,
+        medicineName: medicine?.name || "Stock medicine",
+        batch: medicine?.batch || "-",
+        qty: Number(item.qty || 0),
+        rate: Number(medicine?.rate || 0),
+        total: Number(item.qty || 0) * Number(medicine?.rate || 0),
+        medicine
+      };
+    });
+    if (items.some((item) => !item.medicineName || item.qty <= 0)) return;
+    const subtotal = items.reduce((sum, item) => sum + item.total, 0);
     const discount = Number(payload.discount || 0);
-    medicine.stock = Math.max(Number(medicine.stock) - qty, 0);
+    items.forEach((item) => {
+      if (item.medicine) item.medicine.stock = Math.max(Number(item.medicine.stock) - item.qty, 0);
+    });
     state.pharmacySales.unshift({
       id: `PH-${Date.now().toString().slice(-6)}`,
       patientId: payload.patient,
       patientName: patient?.name || "Walk-in",
-      medicineId: medicine.id,
-      medicineName: medicine.name,
-      batch: medicine.batch,
-      qty,
-      rate: Number(medicine.rate || 0),
+      medicineId: items[0].medicineId,
+      medicineName: items.map((item) => item.medicineName).join(", "),
+      batch: items.map((item) => item.batch).join(", "),
+      qty: items.reduce((sum, item) => sum + item.qty, 0),
+      rate: items.length === 1 ? items[0].rate : 0,
+      items: items.map(({ medicine, ...item }) => item),
+      subtotal,
       discount,
       total: Math.max(subtotal - discount, 0),
       mode: payload.mode,
       date: new Date().toLocaleDateString("en-IN")
     });
   });
-  resetForm(form);
+  if (saved) {
+    resetForm(form);
+    resetSaleItems();
+  }
 });
 
 document.getElementById("admissionForm").addEventListener("submit", async (event) => {
@@ -699,5 +890,6 @@ document.querySelectorAll('input[type="date"]').forEach((input) => {
   input.value = today();
 });
 
+resetSaleItems();
 requireLogin();
 loadBootstrap();
