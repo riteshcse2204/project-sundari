@@ -181,12 +181,21 @@
               <h3>Create Bill</h3>
               <div class="form-grid">
                 <label>Patient<select name="patient" id="billPatient"></select></label>
-                <label>Service<select name="service"><option>OPD Consultation</option><option>Procedure</option><option>Dressing</option><option>IPD Advance</option></select></label>
-                <label>Amount<input name="amount" type="number" min="0" required value="500" /></label>
                 <label>Discount<input name="discount" type="number" min="0" value="0" /></label>
                 <label>Paid<input name="paid" type="number" min="0" required value="500" /></label>
                 <label>Mode<select name="mode"><option>Cash</option><option>UPI</option><option>Card</option></select></label>
               </div>
+              <div class="sale-builder">
+                <div class="panel-head compact-head">
+                  <h4>Bill items</h4>
+                  <div class="top-actions">
+                    <button class="text-button" id="addServiceBillItem" type="button">Add Service</button>
+                    <button class="text-button" id="addManualBillItem" type="button">Add Manual Item</button>
+                  </div>
+                </div>
+                <div id="billItems" class="sale-items"></div>
+              </div>
+              <div id="billTotalPreview" class="total-preview">Total: Rs 0</div>
               <button class="primary-button" type="submit">Generate Receipt</button>
             </form>
 

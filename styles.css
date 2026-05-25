@@ -394,6 +394,10 @@ textarea {
   grid-template-columns: minmax(180px, 1.3fr) minmax(130px, 0.8fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) auto;
 }
 
+.bill-item {
+  grid-template-columns: minmax(190px, 1.3fr) minmax(100px, 0.7fr) minmax(80px, 0.5fr) auto;
+}
+
 .total-preview {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -690,6 +694,7 @@ textarea:focus {
   }
 
   .sale-item,
+  .bill-item,
   .sale-item[data-type="manual"] {
     grid-template-columns: 1fr 1fr;
   }
@@ -726,6 +731,7 @@ textarea:focus {
   }
 
   .sale-item,
+  .bill-item,
   .sale-item[data-type="manual"] {
     grid-template-columns: 1fr;
   }

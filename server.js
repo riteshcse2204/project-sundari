@@ -164,6 +164,23 @@ function normalizeSaleItems(body, db) {
   });
 }
 
+function normalizeBillItems(body) {
+  const requestedItems = Array.isArray(body.items) && body.items.length
+    ? body.items
+    : [{ service: body.service, description: body.service, qty: 1, rate: body.amount }];
+  return requestedItems.map((item) => {
+    const description = String(item.description || item.service || "").trim();
+    const qty = Number(item.qty || 1);
+    const rate = Number(item.rate || item.amount || 0);
+    return {
+      description,
+      qty,
+      rate,
+      total: qty * rate
+    };
+  });
+}
+
 async function handleApi(req, res, pathname) {
   const db = await readDb();
 
@@ -296,13 +313,25 @@ async function handleApi(req, res, pathname) {
     if (!user) return;
     const body = await collectBody(req);
     const patient = db.patients.find((item) => item.id === body.patient);
-    const total = Math.max(Number(body.amount) - Number(body.discount || 0), 0);
+    const items = normalizeBillItems(body);
+    if (!items.length) return sendJson(res, 400, { error: "Add at least one billing item" });
+    for (const item of items) {
+      if (!item.description) return sendJson(res, 400, { error: "Billing item name is required" });
+      if (item.qty <= 0) return sendJson(res, 400, { error: "Quantity must be greater than zero" });
+      if (item.rate < 0) return sendJson(res, 400, { error: "Rate cannot be negative" });
+    }
+    const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+    const discount = Number(body.discount || 0);
+    const total = Math.max(subtotal - discount, 0);
     const paid = Number(body.paid || 0);
     const bill = {
       id: nextId("RCPT", db.bills),
       patientId: body.patient,
       patientName: patient?.name || "Walk-in",
-      service: body.service,
+      service: items.map((item) => item.description).join(", "),
+      items,
+      subtotal,
+      discount,
       total,
       paid,
       due: Math.max(total - paid, 0),

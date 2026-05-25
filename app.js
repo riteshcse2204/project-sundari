@@ -33,6 +33,7 @@ let currentSession = JSON.parse(localStorage.getItem(sessionKey) || "null");
 let currentUser = currentSession?.user || currentSession || null;
 let selectedPatientId = null;
 let apiOnline = true;
+let billItemCounter = 0;
 let saleItemCounter = 0;
 
 const clinic = {
@@ -40,6 +41,18 @@ const clinic = {
   address: "New Bypass Road, East Ashokchak, Patna 800016",
   phones: "9113420207, 9472655788, 6205471960"
 };
+
+const billServicePresets = [
+  { label: "OPD Consultation", rate: 500 },
+  { label: "Procedure", rate: 1000 },
+  { label: "Dressing", rate: 300 },
+  { label: "IPD Advance", rate: 2000 },
+  { label: "Lab / Test", rate: 600 },
+  { label: "Injection", rate: 150 },
+  { label: "Bed Charge", rate: 1200 },
+  { label: "Nursing Charge", rate: 800 },
+  { label: "Operation / Delivery Advance", rate: 5000 }
+];
 
 const rolePermissions = {
   viewDashboard: ["Admin", "Doctor", "Reception", "Pharmacy", "Nurse", "Accountant"],
@@ -222,6 +235,10 @@ function medicineOptions() {
   return state.medicines.map((medicine) => `<option value="${medicine.id}">${medicine.name} | ${medicine.stock} in stock | ${currency(medicine.rate)}</option>`).join("");
 }
 
+function billServiceOptions() {
+  return billServicePresets.map((service) => `<option value="${service.label}" data-rate="${service.rate}">${service.label} | ${currency(service.rate)}</option>`).join("");
+}
+
 function patientDetailDocument(patient) {
   const patientBills = state.bills.filter((bill) => bill.patientId === patient.id);
   const patientSales = (state.pharmacySales || []).filter((sale) => sale.patientId === patient.id);
@@ -294,7 +311,7 @@ function renderBills() {
       <tr>
         <td><strong>${bill.id}</strong><span>${bill.date}</span></td>
         <td>${bill.patientName}</td>
-        <td>${bill.service}</td>
+        <td>${bill.service}<span>${bill.items?.length ? `${bill.items.length} items` : "Single item"}</span></td>
         <td>${currency(bill.total)}</td>
         <td>${currency(bill.paid)}</td>
         <td>${currency(bill.due)}</td>
@@ -416,6 +433,62 @@ function resetForm(form) {
   if (dateInput) dateInput.value = today();
 }
 
+function addBillItem(type = "service") {
+  const itemId = `bill-item-${++billItemCounter}`;
+  const isManual = type === "manual";
+  const row = document.createElement("div");
+  row.className = "sale-item bill-item";
+  row.dataset.billItem = itemId;
+  row.dataset.type = type;
+  row.innerHTML = isManual
+    ? `<label>Manual Item<input data-bill-description placeholder="Item name" required /></label>
+      <label>Rate<input data-bill-rate type="number" min="0" value="0" required /></label>
+      <label>Qty<input data-bill-qty type="number" min="1" value="1" required /></label>
+      <button class="mini-button remove-bill-item" type="button">Remove</button>`
+    : `<label>Service<select class="bill-service" data-bill-service required>${billServiceOptions()}</select></label>
+      <label>Rate<input data-bill-rate type="number" min="0" value="${billServicePresets[0].rate}" required /></label>
+      <label>Qty<input data-bill-qty type="number" min="1" value="1" required /></label>
+      <button class="mini-button remove-bill-item" type="button">Remove</button>`;
+  document.getElementById("billItems").append(row);
+  updateBillItemRate(row);
+  updateBillTotalPreview();
+}
+
+function updateBillItemRate(row) {
+  const select = row.querySelector("[data-bill-service]");
+  const rateInput = row.querySelector("[data-bill-rate]");
+  if (!select || !rateInput) return;
+  const service = billServicePresets.find((item) => item.label === select.value);
+  rateInput.value = service?.rate || rateInput.value || 0;
+}
+
+function collectBillItems() {
+  return [...document.querySelectorAll("[data-bill-item]")].map((row) => {
+    const qty = Number(row.querySelector("[data-bill-qty]")?.value || 0);
+    const rate = Number(row.querySelector("[data-bill-rate]")?.value || 0);
+    const description = row.dataset.type === "manual"
+      ? row.querySelector("[data-bill-description]")?.value?.trim()
+      : row.querySelector("[data-bill-service]")?.value;
+    return { description, qty, rate };
+  });
+}
+
+function updateBillTotalPreview() {
+  const discount = Number(document.querySelector("#billForm [name='discount']")?.value || 0);
+  const paidInput = document.querySelector("#billForm [name='paid']");
+  const subtotal = collectBillItems().reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.rate || 0), 0);
+  const total = Math.max(subtotal - discount, 0);
+  document.getElementById("billTotalPreview").textContent = `Subtotal: ${currency(subtotal)} | Discount: ${currency(discount)} | Total: ${currency(total)}`;
+  if (paidInput && (!paidInput.dataset.touched || Number(paidInput.value || 0) === 0)) {
+    paidInput.value = total;
+  }
+}
+
+function resetBillItems() {
+  document.getElementById("billItems").innerHTML = "";
+  addBillItem("service");
+}
+
 function addSaleItem(type = "stock") {
   const itemId = `sale-item-${++saleItemCounter}`;
   const isManual = type === "manual";
@@ -523,6 +596,14 @@ function prescriptionDocument(prescription) {
 
 function billDocument(bill) {
   const patient = state.patients.find((item) => item.id === bill.patientId);
+  const items = bill.items?.length
+    ? bill.items
+    : [{
+        description: bill.service,
+        qty: 1,
+        rate: Number(bill.total || 0) + Number(bill.discount || 0),
+        total: Number(bill.total || 0) + Number(bill.discount || 0)
+      }];
   return `${letterhead("Receipt", bill.id, bill.date)}
     <div class="print-section">
       <h4>Patient Details</h4>
@@ -535,9 +616,22 @@ function billDocument(bill) {
       </table>
     </div>
     <div class="print-section">
-      <h4>Billing Details</h4>
+      <h4>Bill Items</h4>
       <table class="print-table">
-        <tr><th>Service</th><td>${bill.service}</td></tr>
+        <thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Total</th></tr></thead>
+        <tbody>${items.map((item) => `<tr>
+          <td>${item.description}</td>
+          <td>${item.qty}</td>
+          <td>${currency(item.rate)}</td>
+          <td>${currency(item.total)}</td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </div>
+    <div class="print-section">
+      <h4>Payment</h4>
+      <table class="print-table">
+        <tr><th>Subtotal</th><td>${currency(bill.subtotal || items.reduce((sum, item) => sum + Number(item.total || 0), 0))}</td></tr>
+        <tr><th>Discount</th><td>${currency(bill.discount)}</td></tr>
         <tr><th>Total</th><td>${currency(bill.total)}</td></tr>
         <tr><th>Paid</th><td>${currency(bill.paid)}</td></tr>
         <tr><th>Due</th><td>${currency(bill.due)}</td></tr>
@@ -670,6 +764,13 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  if (event.target.classList.contains("remove-bill-item")) {
+    event.target.closest("[data-bill-item]")?.remove();
+    if (!document.querySelector("[data-bill-item]")) addBillItem("service");
+    updateBillTotalPreview();
+    return;
+  }
+
   if (event.target.classList.contains("remove-sale-item")) {
     event.target.closest("[data-sale-item]")?.remove();
     if (!document.querySelector("[data-sale-item]")) addSaleItem("stock");
@@ -706,6 +807,18 @@ document.addEventListener("click", (event) => {
   }
 });
 
+document.getElementById("addServiceBillItem").addEventListener("click", () => addBillItem("service"));
+document.getElementById("addManualBillItem").addEventListener("click", () => addBillItem("manual"));
+document.getElementById("billForm").addEventListener("input", (event) => {
+  if (event.target.name === "paid") event.target.dataset.touched = "true";
+  updateBillTotalPreview();
+});
+document.getElementById("billForm").addEventListener("change", (event) => {
+  const row = event.target.closest("[data-bill-item]");
+  if (row && event.target.matches("[data-bill-service]")) updateBillItemRate(row);
+  updateBillTotalPreview();
+});
+
 document.getElementById("prescriptionForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!selectedPatientId) return;
@@ -722,16 +835,28 @@ document.getElementById("prescriptionForm").addEventListener("submit", async (ev
 document.getElementById("billForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
-  const data = Object.fromEntries(new FormData(form));
-  await postData("/api/bills", data, (payload) => {
+  const data = { ...Object.fromEntries(new FormData(form)), items: collectBillItems() };
+  const saved = await postData("/api/bills", data, (payload) => {
     const patient = state.patients.find((item) => item.id === payload.patient);
-    const total = Math.max(Number(payload.amount) - Number(payload.discount || 0), 0);
+    const items = payload.items.map((item) => ({
+      description: item.description,
+      qty: Number(item.qty || 0),
+      rate: Number(item.rate || 0),
+      total: Number(item.qty || 0) * Number(item.rate || 0)
+    }));
+    if (items.some((item) => !item.description || item.qty <= 0)) return;
+    const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+    const discount = Number(payload.discount || 0);
+    const total = Math.max(subtotal - discount, 0);
     const paid = Number(payload.paid || 0);
     state.bills.unshift({
       id: `RCPT-${Date.now().toString().slice(-6)}`,
       patientId: payload.patient,
       patientName: patient?.name || "Walk-in",
-      service: payload.service,
+      service: items.map((item) => item.description).join(", "),
+      items,
+      subtotal,
+      discount,
       total,
       paid,
       due: Math.max(total - paid, 0),
@@ -739,6 +864,11 @@ document.getElementById("billForm").addEventListener("submit", async (event) => 
       date: new Date().toLocaleDateString("en-IN")
     });
   });
+  if (saved) {
+    resetForm(form);
+    form.querySelector("[name='paid']").dataset.touched = "";
+    resetBillItems();
+  }
 });
 
 document.getElementById("medicineForm").addEventListener("submit", async (event) => {
@@ -890,6 +1020,7 @@ document.querySelectorAll('input[type="date"]').forEach((input) => {
   input.value = today();
 });
 
+resetBillItems();
 resetSaleItems();
 requireLogin();
 loadBootstrap();
