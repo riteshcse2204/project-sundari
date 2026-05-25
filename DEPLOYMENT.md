@@ -2,9 +2,9 @@
 
 ## Current Deployment Mode
 
-The app currently runs on a dependency-free Node.js server and persists data in `data/db.json`.
+The app runs on a Node.js server. In local development it persists data in `data/db.json`.
 
-This is good for demos and controlled local testing. For real clinic use, deploy with PostgreSQL before entering real patient data.
+For Render or any production host, set `DATABASE_URL` so the app persists data in PostgreSQL. Without PostgreSQL, Render's normal filesystem can lose runtime file changes after restart or redeploy.
 
 ## Local Run
 
@@ -31,19 +31,41 @@ docker build -t sundari-care .
 docker run -p 4174:4174 --env-file .env sundari-care
 ```
 
-## PostgreSQL Setup
+## Render PostgreSQL Setup
 
-Create a database, then run:
+1. Create a Render PostgreSQL database.
+2. Copy its internal database URL.
+3. Open the Sundari Care web service on Render.
+4. Add an environment variable:
+
+```text
+DATABASE_URL=postgresql://...
+```
+
+5. Redeploy the web service.
+
+On first startup, the server creates the `app_state` table automatically and copies the current `data/db.json` seed into PostgreSQL.
+
+Optional manual schema command:
 
 ```bash
 psql "$DATABASE_URL" -f database/schema.sql
-psql "$DATABASE_URL" -f database/seed.sql
 ```
 
-Next backend step:
-- Add `pg` driver
-- Create a repository layer
-- Switch API reads/writes from `data/db.json` to PostgreSQL when `DATABASE_URL` is present
+Health check should show:
+
+```json
+{"storage":"postgresql"}
+```
+
+## Daily Backup
+
+For tomorrow's client handoff, use both:
+
+- Admin `Backup` button at end of day for a quick JSON download.
+- Render PostgreSQL backups/snapshots for server-side data safety.
+
+Before entering real patient data, confirm `/api/health` reports `postgresql`.
 
 ## Production Checklist
 

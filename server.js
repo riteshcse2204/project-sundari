@@ -8,6 +8,8 @@ const dataFile = path.join(root, "data", "db.json");
 const port = Number(process.env.PORT || 4174);
 const sessions = new Map();
 let writeQueue = Promise.resolve();
+let pgPool = null;
+let storageMode = "json-file";
 
 const permissions = {
   viewDashboard: ["Admin", "Doctor", "Reception", "Pharmacy", "Nurse", "Accountant"],
@@ -31,18 +33,74 @@ const mimeTypes = {
   ".svg": "image/svg+xml"
 };
 
-async function readDb() {
+async function readJsonDb() {
   const text = await fs.readFile(dataFile, "utf-8");
   return JSON.parse(text);
 }
 
-async function writeDb(db) {
+async function writeJsonDb(db) {
   writeQueue = writeQueue.then(async () => {
     await fs.mkdir(path.dirname(dataFile), { recursive: true });
     const tmpFile = `${dataFile}.tmp`;
     await fs.writeFile(tmpFile, `${JSON.stringify(db, null, 2)}\n`);
     await fs.rename(tmpFile, dataFile);
   });
+  return writeQueue;
+}
+
+async function initStorage() {
+  if (!process.env.DATABASE_URL) return;
+  let Pool;
+  try {
+    ({ Pool } = require("pg"));
+  } catch (error) {
+    throw new Error("DATABASE_URL is set but the pg package is not installed. Run npm install before starting the server.");
+  }
+
+  pgPool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false }
+  });
+
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS app_state (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  const existing = await pgPool.query("SELECT id FROM app_state WHERE id = $1", ["default"]);
+  if (!existing.rowCount) {
+    const seed = await readJsonDb();
+    await pgPool.query(
+      "INSERT INTO app_state (id, data, updated_at) VALUES ($1, $2::jsonb, now())",
+      ["default", JSON.stringify(seed)]
+    );
+  }
+  storageMode = "postgresql";
+}
+
+async function readDb() {
+  if (!pgPool) return readJsonDb();
+  const result = await pgPool.query("SELECT data FROM app_state WHERE id = $1", ["default"]);
+  if (!result.rowCount) {
+    const seed = await readJsonDb();
+    await writeDb(seed);
+    return seed;
+  }
+  return result.rows[0].data;
+}
+
+async function writeDb(db) {
+  if (!pgPool) return writeJsonDb(db);
+  writeQueue = writeQueue.then(() => pgPool.query(
+    `INSERT INTO app_state (id, data, updated_at)
+     VALUES ($1, $2::jsonb, now())
+     ON CONFLICT (id)
+     DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+    ["default", JSON.stringify(db)]
+  ));
   return writeQueue;
 }
 
@@ -188,7 +246,7 @@ async function handleApi(req, res, pathname) {
     return sendJson(res, 200, {
       ok: true,
       app: "Sundari Care & Nursing Home",
-      storage: process.env.DATABASE_URL ? "postgresql-ready" : "json-file",
+      storage: storageMode,
       timestamp: new Date().toISOString()
     });
   }
@@ -616,6 +674,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, () => {
-  console.log(`Sundari Care server running at http://localhost:${port}`);
-});
+initStorage()
+  .then(() => {
+    server.listen(port, () => {
+      console.log(`Sundari Care server running at http://localhost:${port} using ${storageMode} storage`);
+    });
+  })
+  .catch((error) => {
+    console.error("Failed to initialize storage:", error);
+    process.exit(1);
+  });
