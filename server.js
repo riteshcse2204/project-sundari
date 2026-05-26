@@ -10,6 +10,7 @@ const sessions = new Map();
 let writeQueue = Promise.resolve();
 let pgPool = null;
 let storageMode = "json-file";
+let storageError = null;
 
 const permissions = {
   viewDashboard: ["Admin", "Doctor", "Reception", "Pharmacy", "Nurse", "Accountant"],
@@ -59,6 +60,9 @@ async function initStorage() {
 
   pgPool = new Pool({
     connectionString: process.env.DATABASE_URL,
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 30_000,
+    max: 5,
     ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false }
   });
 
@@ -79,6 +83,7 @@ async function initStorage() {
     );
   }
   storageMode = "postgresql";
+  storageError = null;
 }
 
 async function readDb() {
@@ -247,6 +252,7 @@ async function handleApi(req, res, pathname) {
       ok: true,
       app: "Sundari Care & Nursing Home",
       storage: storageMode,
+      storageError,
       timestamp: new Date().toISOString()
     });
   }
@@ -675,12 +681,14 @@ const server = http.createServer(async (req, res) => {
 });
 
 initStorage()
-  .then(() => {
+  .catch((error) => {
+    storageMode = "postgresql-error";
+    storageError = error.message;
+    pgPool = null;
+    console.error("Failed to initialize PostgreSQL storage. Falling back to json-file storage:", error.message);
+  })
+  .finally(() => {
     server.listen(port, () => {
       console.log(`Sundari Care server running at http://localhost:${port} using ${storageMode} storage`);
     });
-  })
-  .catch((error) => {
-    console.error("Failed to initialize storage:", error);
-    process.exit(1);
   });

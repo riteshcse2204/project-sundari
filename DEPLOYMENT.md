@@ -58,6 +58,14 @@ Health check should show:
 {"storage":"postgresql"}
 ```
 
+If health shows `postgresql-error`, check:
+
+- `DATABASE_URL` starts with `postgresql://`, not `https://`.
+- The database password has replaced `[YOUR-PASSWORD]`.
+- Special characters in the password are URL-encoded, or use a password with letters/numbers plus simple symbols.
+- Supabase project status is Active.
+- Use the Supabase Transaction Pooler connection string for Render.
+
 ## Daily Backup
 
 For tomorrow's client handoff, use both:
