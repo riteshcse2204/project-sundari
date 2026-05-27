@@ -150,9 +150,45 @@ function saveOffline() {
   localStorage.setItem(storeKey, JSON.stringify(state));
 }
 
+function medicineKey(medicine) {
+  return [medicine.name, medicine.batch, medicine.expiry]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .join("|");
+}
+
+async function syncOfflineMedicines(serverState) {
+  const saved = localStorage.getItem(storeKey);
+  if (!saved || !currentSession?.token) return serverState;
+
+  let offlineState;
+  try {
+    offlineState = JSON.parse(saved);
+  } catch {
+    return serverState;
+  }
+
+  const serverMedicineKeys = new Set((serverState.medicines || []).map(medicineKey));
+  const offlineMedicines = (offlineState.medicines || []).filter((medicine) => !serverMedicineKeys.has(medicineKey(medicine)));
+  if (!offlineMedicines.length) {
+    localStorage.removeItem(storeKey);
+    return serverState;
+  }
+
+  let syncedState = serverState;
+  for (const medicine of offlineMedicines) {
+    const { id, ...payload } = medicine;
+    syncedState = await api("/api/medicines", {
+      method: "POST",
+      body: JSON.stringify({ ...payload, createdBy: currentUser?.name || "Offline sync" })
+    });
+  }
+  localStorage.removeItem(storeKey);
+  return syncedState;
+}
+
 async function loadBootstrap() {
   try {
-    state = await api("/api/bootstrap");
+    state = await syncOfflineMedicines(await api("/api/bootstrap"));
     apiOnline = true;
   } catch (error) {
     if (error.status === 401 && currentUser) {
