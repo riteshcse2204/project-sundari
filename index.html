@@ -130,7 +130,7 @@
                 <label>Gender<select name="gender"><option>Female</option><option>Male</option><option>Other</option></select></label>
                 <label>Mobile<input name="mobile" required placeholder="Mobile number" /></label>
                 <label>Address<input name="address" placeholder="Address" /></label>
-                <label>Doctor<select name="doctor"><option>Dr. Sharma</option><option>Dr. Verma</option><option>Dr. Singh</option></select></label>
+                <label>Doctor<input name="doctor" list="doctorOptions" required value="Dr. Vimal Kumar" placeholder="Select or add doctor" /></label>
               </div>
               <button class="primary-button" type="submit">Register Patient</button>
             </form>
@@ -181,7 +181,7 @@
               <h3>Create Bill</h3>
               <div class="form-grid">
                 <label>Patient<select name="patient" id="billPatient"></select></label>
-                <label>Discount<input name="discount" type="number" min="0" value="0" /></label>
+                <label>Discount<input name="discount" type="number" min="0" value="0" placeholder="Manual discount" /></label>
                 <label>Paid<input name="paid" type="number" min="0" required value="500" /></label>
                 <label>Mode<select name="mode"><option>Cash</option><option>UPI</option><option>Card</option></select></label>
               </div>
@@ -263,9 +263,9 @@
               <h3>IPD Admission</h3>
               <div class="form-grid">
                 <label>Patient<select name="patient" id="admissionPatient"></select></label>
-                <label>Ward<select name="ward"><option>General Ward</option><option>Private Room</option><option>Emergency</option><option>Maternity</option></select></label>
+                <label>Ward<select name="ward"><option>General Ward</option><option>ICU</option><option>Private Room</option><option>Emergency</option><option>Maternity</option></select></label>
                 <label>Bed No.<input name="bed" required placeholder="Bed / Room number" /></label>
-                <label>Doctor<select name="doctor"><option>Dr. Sharma</option><option>Dr. Verma</option><option>Dr. Singh</option></select></label>
+                <label>Doctor<input name="doctor" list="doctorOptions" required value="Dr. Vimal Kumar" placeholder="Select or add doctor" /></label>
                 <label>Admission Reason<textarea name="reason" placeholder="Reason for admission"></textarea></label>
                 <label>Deposit<input name="deposit" type="number" min="0" value="2000" /></label>
               </div>
@@ -358,7 +358,9 @@
             </section>
           </div>
         </section>
-      </main>
+    </main>
+
+    <datalist id="doctorOptions"></datalist>
     </div>
 
     <section id="printModal" class="modal" aria-hidden="true">

@@ -42,16 +42,28 @@ const clinic = {
   phones: "9113420207, 9472655788, 6205471960"
 };
 
+const doctorOptions = [
+  "Dr. Vimal Kumar",
+  "Dr. Krishnandan Kumar",
+  "Dr. Yogesh Kumar",
+  "Dr. RK Ranjan"
+];
+
 const billServicePresets = [
-  { label: "OPD Consultation", rate: 500 },
-  { label: "Procedure", rate: 1000 },
-  { label: "Dressing", rate: 300 },
-  { label: "IPD Advance", rate: 2000 },
-  { label: "Lab / Test", rate: 600 },
-  { label: "Injection", rate: 150 },
-  { label: "Bed Charge", rate: 1200 },
-  { label: "Nursing Charge", rate: 800 },
-  { label: "Operation / Delivery Advance", rate: 5000 }
+  { label: "Nursing charge", rate: 0 },
+  { label: "OPD", rate: 0 },
+  { label: "Bed charge", rate: 0 },
+  { label: "Doctor visit", rate: 0 },
+  { label: "Nebulization", rate: 0 },
+  { label: "Air bed", rate: 0 },
+  { label: "Oxygen", rate: 0 },
+  { label: "Infusion", rate: 0 },
+  { label: "Dressing", rate: 0 },
+  { label: "CVP line", rate: 0 },
+  { label: "Ryle's tube", rate: 0 },
+  { label: "Foley's catheter", rate: 0 },
+  { label: "Tracheostomy tube change", rate: 0 },
+  { label: "RBS", rate: 0 }
 ];
 
 const rolePermissions = {
@@ -78,6 +90,14 @@ const viewPermissions = {
 
 function currency(value) {
   return `Rs ${Number(value || 0).toLocaleString("en-IN")}`;
+}
+
+function nextPatientId(patients) {
+  const maxId = patients.reduce((max, patient) => {
+    const numericId = Number(String(patient.id || "").replace("SC-", ""));
+    return Number.isFinite(numericId) ? Math.max(max, numericId) : max;
+  }, 1000);
+  return `SC-${maxId + 1}`;
 }
 
 function today() {
@@ -226,6 +246,32 @@ async function postData(path, payload, offlineHandler) {
   return true;
 }
 
+async function deletePatient(patientId) {
+  if (!confirm("Delete this patient record? Existing bills and pharmacy bills will stay in reports.")) return;
+
+  if (apiOnline) {
+    try {
+      state = await api(`/api/patients/${encodeURIComponent(patientId)}`, { method: "DELETE" });
+      if (selectedPatientId === patientId) selectedPatientId = state.patients[0]?.id || null;
+      renderAll();
+      return;
+    } catch (error) {
+      if (error.status) {
+        alert(error.message);
+        return;
+      }
+      apiOnline = false;
+    }
+  }
+
+  state.patients = state.patients.filter((patient) => patient.id !== patientId);
+  state.prescriptions = state.prescriptions.filter((prescription) => prescription.patientId !== patientId);
+  state.admissions = state.admissions.filter((admission) => admission.patientId !== patientId);
+  if (selectedPatientId === patientId) selectedPatientId = state.patients[0]?.id || null;
+  saveOffline();
+  renderAll();
+}
+
 function requireLogin() {
   document.getElementById("loginScreen").classList.toggle("hidden", Boolean(currentUser));
   document.querySelector(".app-shell").classList.toggle("locked", !currentUser);
@@ -272,7 +318,16 @@ function medicineOptions() {
 }
 
 function billServiceOptions() {
-  return billServicePresets.map((service) => `<option value="${service.label}" data-rate="${service.rate}">${service.label} | ${currency(service.rate)}</option>`).join("");
+  return billServicePresets.map((service) => `<option value="${service.label}" data-rate="${service.rate}">${service.label}</option>`).join("");
+}
+
+function renderDoctorOptions() {
+  const savedDoctors = [
+    ...state.patients.map((patient) => patient.doctor),
+    ...state.admissions.map((admission) => admission.doctor)
+  ].filter(Boolean);
+  const doctors = [...new Set([...doctorOptions, ...savedDoctors])];
+  document.getElementById("doctorOptions").innerHTML = doctors.map((doctor) => `<option value="${doctor}"></option>`).join("");
 }
 
 function patientDetailDocument(patient) {
@@ -307,7 +362,10 @@ function renderPatients() {
         <td>${patient.mobile}</td>
         <td>${patient.doctor}</td>
         <td><span class="badge">${patient.status}</span></td>
-        <td><button class="mini-button" data-select-patient="${patient.id}" data-go-doctor="true">Consult</button></td>
+        <td class="action-cell">
+          <button class="mini-button" data-select-patient="${patient.id}" data-go-doctor="true">Consult</button>
+          <button class="mini-button danger-button" data-delete-patient="${patient.id}" type="button">Delete</button>
+        </td>
       </tr>`).join("")}</tbody></table>`
     : `<div class="empty">No patient found.</div>`;
 
@@ -444,6 +502,7 @@ function renderUsers() {
 }
 
 function renderAll() {
+  renderDoctorOptions();
   renderDashboard();
   renderPatients();
   renderDoctor();
@@ -584,12 +643,12 @@ function resetSaleItems() {
 
 function letterhead(title, id, date) {
   return `<div class="print-letterhead">
-    <div>
+    <div class="clinic-heading">
       <h2>${clinic.name}</h2>
       <p>${clinic.address}</p>
       <p>Phone: ${clinic.phones}</p>
     </div>
-    <div>
+    <div class="print-meta">
       <strong>${title}</strong>
       <p>${id}</p>
       <p>${date || new Date().toLocaleDateString("en-IN")}</p>
@@ -645,7 +704,7 @@ function billDocument(bill) {
   return `${letterhead("Receipt", bill.id, bill.date)}
     <div class="print-section">
       <h4>Patient Details</h4>
-      <table class="print-table">
+      <table class="print-table patient-summary-table">
         <tr><th>Patient</th><td>${bill.patientName}</td></tr>
         <tr><th>UHID</th><td>${bill.patientId || "-"}</td></tr>
         <tr><th>Age / Gender</th><td>${patient ? `${patient.age} / ${patient.gender}` : "-"}</td></tr>
@@ -693,13 +752,14 @@ function pharmacyDocument(sale) {
   return `${letterhead("Pharmacy Bill", sale.id, sale.date)}
     <div class="print-section">
       <h4>Patient Details</h4>
-      <table class="print-table">
+      <table class="print-table patient-summary-table">
         <tr><th>Patient</th><td>${sale.patientName}</td></tr>
         <tr><th>UHID</th><td>${sale.patientId || "-"}</td></tr>
         <tr><th>Age / Gender</th><td>${patient ? `${patient.age} / ${patient.gender}` : "-"}</td></tr>
         <tr><th>Mobile</th><td>${patient?.mobile || "-"}</td></tr>
       </table>
     </div>
+    <div class="rx-divider"><span></span><strong>Rx</strong><span></span></div>
     <div class="print-section">
       <h4>Medicines</h4>
       <table class="print-table">
@@ -787,7 +847,7 @@ document.getElementById("patientForm").addEventListener("submit", async (event) 
   const form = event.currentTarget;
   const data = Object.fromEntries(new FormData(form));
   await postData("/api/patients", data, (payload) => {
-    const patient = { id: `SC-${1001 + state.patients.length}`, ...payload, status: "Waiting", createdAt: new Date().toISOString() };
+    const patient = { id: nextPatientId(state.patients), ...payload, status: "Waiting", createdAt: new Date().toISOString() };
     state.patients.unshift(patient);
     selectedPatientId = patient.id;
   });
@@ -795,6 +855,12 @@ document.getElementById("patientForm").addEventListener("submit", async (event) 
 });
 
 document.addEventListener("click", (event) => {
+  const deletePatientId = event.target.dataset.deletePatient;
+  if (deletePatientId) {
+    deletePatient(deletePatientId);
+    return;
+  }
+
   const detailPatientId = event.target.closest("[data-patient-detail]")?.dataset.patientDetail;
   if (detailPatientId) {
     const patient = state.patients.find((item) => item.id === detailPatientId);

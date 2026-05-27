@@ -197,6 +197,14 @@ function nextId(prefix, collection) {
   return `${prefix}-${Date.now().toString().slice(-7)}`;
 }
 
+function nextPatientId(patients) {
+  const maxId = patients.reduce((max, patient) => {
+    const numericId = Number(String(patient.id || "").replace("SC-", ""));
+    return Number.isFinite(numericId) ? Math.max(max, numericId) : max;
+  }, 1000);
+  return `SC-${maxId + 1}`;
+}
+
 function addAudit(db, user, action, entity) {
   db.auditLogs.unshift({
     id: nextId("LOG", db.auditLogs),
@@ -344,7 +352,7 @@ async function handleApi(req, res, pathname) {
       return sendJson(res, 400, { error: "Name, age and mobile are required" });
     }
     const patient = {
-      id: `SC-${1001 + db.patients.length}`,
+      id: nextPatientId(db.patients),
       ...body,
       status: "Waiting",
       createdAt: new Date().toISOString()
@@ -353,6 +361,22 @@ async function handleApi(req, res, pathname) {
     addAudit(db, user.name, "Registered patient", patient.id);
     await writeDb(db);
     return sendJson(res, 201, publicDb(db));
+  }
+
+  const deletePatientMatch = pathname.match(/^\/api\/patients\/([^/]+)$/);
+  if (req.method === "DELETE" && deletePatientMatch) {
+    const user = requirePermission(req, res, db, "managePatients");
+    if (!user) return;
+    const patientId = decodeURIComponent(deletePatientMatch[1]);
+    const patient = db.patients.find((item) => item.id === patientId);
+    if (!patient) return sendJson(res, 404, { error: "Patient not found" });
+
+    db.patients = db.patients.filter((item) => item.id !== patientId);
+    db.prescriptions = db.prescriptions.filter((item) => item.patientId !== patientId);
+    db.admissions = db.admissions.filter((item) => item.patientId !== patientId);
+    addAudit(db, user.name, "Deleted patient", `${patient.name} (${patient.id})`);
+    await writeDb(db);
+    return sendJson(res, 200, publicDb(db));
   }
 
   if (req.method === "POST" && pathname === "/api/prescriptions") {
