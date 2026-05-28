@@ -1,4 +1,5 @@
 const storeKey = "sundari-care-offline-v2";
+const cacheKey = "sundari-care-last-good-v1";
 const sessionKey = "sundari-care-session";
 
 const fallbackData = {
@@ -161,7 +162,7 @@ function applyRoleAccess() {
 }
 
 function loadOffline() {
-  const saved = localStorage.getItem(storeKey);
+  const saved = localStorage.getItem(storeKey) || localStorage.getItem(cacheKey);
   state = saved ? JSON.parse(saved) : structuredClone(fallbackData);
   apiOnline = false;
 }
@@ -170,25 +171,44 @@ function saveOffline() {
   localStorage.setItem(storeKey, JSON.stringify(state));
 }
 
+function saveLastGoodState() {
+  localStorage.setItem(cacheKey, JSON.stringify(state));
+}
+
 function medicineKey(medicine) {
   return [medicine.name, medicine.batch, medicine.expiry]
     .map((value) => String(value || "").trim().toLowerCase())
     .join("|");
 }
 
-async function syncOfflineMedicines(serverState) {
-  const saved = localStorage.getItem(storeKey);
-  if (!saved || !currentSession?.token) return serverState;
-
-  let offlineState;
-  try {
-    offlineState = JSON.parse(saved);
-  } catch {
-    return serverState;
+function localMedicineDrafts() {
+  const drafts = [];
+  for (const key of [cacheKey, storeKey]) {
+    const saved = localStorage.getItem(key);
+    if (!saved) continue;
+    try {
+      const localState = JSON.parse(saved);
+      drafts.push(...(localState.medicines || []));
+    } catch {
+      continue;
+    }
   }
+  return drafts;
+}
+
+async function syncLocalMedicines(serverState) {
+  const localMedicines = localMedicineDrafts();
+  if (!hasPermission("pharmacy")) return serverState;
+  if (!localMedicines.length || !currentSession?.token) return serverState;
 
   const serverMedicineKeys = new Set((serverState.medicines || []).map(medicineKey));
-  const offlineMedicines = (offlineState.medicines || []).filter((medicine) => !serverMedicineKeys.has(medicineKey(medicine)));
+  const localMedicineKeys = new Set();
+  const offlineMedicines = localMedicines.filter((medicine) => {
+    const key = medicineKey(medicine);
+    if (!key || serverMedicineKeys.has(key) || localMedicineKeys.has(key)) return false;
+    localMedicineKeys.add(key);
+    return true;
+  });
   if (!offlineMedicines.length) {
     localStorage.removeItem(storeKey);
     return serverState;
@@ -208,8 +228,9 @@ async function syncOfflineMedicines(serverState) {
 
 async function loadBootstrap() {
   try {
-    state = await syncOfflineMedicines(await api("/api/bootstrap"));
+    state = await syncLocalMedicines(await api("/api/bootstrap"));
     apiOnline = true;
+    saveLastGoodState();
   } catch (error) {
     if (error.status === 401 && currentUser) {
       currentSession = null;
@@ -230,6 +251,7 @@ async function postData(path, payload, offlineHandler) {
   if (apiOnline) {
     try {
       state = await api(path, { method: "POST", body: JSON.stringify(enriched) });
+      saveLastGoodState();
       renderAll();
       return true;
     } catch (error) {
@@ -1107,9 +1129,24 @@ document.getElementById("passwordForm").addEventListener("submit", async (event)
   }
 });
 
-document.getElementById("seedMeds").addEventListener("click", () => {
-  state.medicines = structuredClone(fallbackData.medicines);
-  saveOffline();
+document.getElementById("seedMeds").addEventListener("click", async () => {
+  const existingKeys = new Set(state.medicines.map(medicineKey));
+  const missingSamples = fallbackData.medicines.filter((medicine) => !existingKeys.has(medicineKey(medicine)));
+  if (!missingSamples.length) return;
+
+  if (apiOnline) {
+    for (const medicine of missingSamples) {
+      const { id, ...payload } = medicine;
+      state = await api("/api/medicines", {
+        method: "POST",
+        body: JSON.stringify({ ...payload, createdBy: currentUser?.name || "Sample stock" })
+      });
+    }
+    saveLastGoodState();
+  } else {
+    state.medicines.unshift(...structuredClone(missingSamples));
+    saveOffline();
+  }
   renderAll();
 });
 
