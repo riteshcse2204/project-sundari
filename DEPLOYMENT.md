@@ -6,6 +6,8 @@ The app runs on a Node.js server. In local development it persists data in `data
 
 For Render or any production host, set `DATABASE_URL` so the app persists data in PostgreSQL. Without PostgreSQL, Render's normal filesystem can lose runtime file changes after restart or redeploy.
 
+If you are using a persistent disk instead of PostgreSQL, set `DATA_FILE` to a path on that mounted disk, for example `/var/data/sundari-care/db.json`. Do not leave production data only in the app folder.
+
 ## Local Run
 
 ```bash

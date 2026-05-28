@@ -4,7 +4,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 
 const root = __dirname;
-const dataFile = path.join(root, "data", "db.json");
+const dataFile = process.env.DATA_FILE ? path.resolve(process.env.DATA_FILE) : path.join(root, "data", "db.json");
 const port = Number(process.env.PORT || 4174);
 const sessions = new Map();
 let writeQueue = Promise.resolve();
@@ -195,6 +195,18 @@ function requirePermission(req, res, db, permission) {
 
 function nextId(prefix, collection) {
   return `${prefix}-${Date.now().toString().slice(-7)}`;
+}
+
+function boundedDiscount(value, subtotal) {
+  const discount = Number(value || 0);
+  if (!Number.isFinite(discount) || discount < 0) return 0;
+  return Math.min(discount, subtotal);
+}
+
+function medicineKey(medicine) {
+  return [medicine.name, medicine.batch, medicine.expiry]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .join("|");
 }
 
 function nextPatientId(patients) {
@@ -409,7 +421,7 @@ async function handleApi(req, res, pathname) {
       if (item.rate < 0) return sendJson(res, 400, { error: "Rate cannot be negative" });
     }
     const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-    const discount = Number(body.discount || 0);
+    const discount = boundedDiscount(body.discount, subtotal);
     const total = Math.max(subtotal - discount, 0);
     const paid = Number(body.paid || 0);
     const bill = {
@@ -466,7 +478,7 @@ async function handleApi(req, res, pathname) {
 
     const patient = db.patients.find((item) => item.id === body.patient);
     const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-    const discount = Number(body.discount || 0);
+    const discount = boundedDiscount(body.discount, subtotal);
     const total = Math.max(subtotal - discount, 0);
     const sale = {
       id: nextId("PH", db.pharmacySales || []),
@@ -493,6 +505,55 @@ async function handleApi(req, res, pathname) {
     addAudit(db, user.name, "Pharmacy sale", sale.id);
     await writeDb(db);
     return sendJson(res, 201, publicDb(db));
+  }
+
+  if (req.method === "POST" && pathname === "/api/restore-records") {
+    const user = requirePermission(req, res, db, "admin");
+    if (!user) return;
+    const body = await collectBody(req);
+
+    const existingMedicineKeys = new Set((db.medicines || []).map(medicineKey));
+    for (const item of Array.isArray(body.medicines) ? body.medicines : []) {
+      const key = medicineKey(item);
+      if (!key || existingMedicineKeys.has(key)) continue;
+      const medicine = {
+        id: nextId("MED", db.medicines),
+        name: String(item.name || "").trim(),
+        batch: String(item.batch || "").trim(),
+        expiry: String(item.expiry || "").trim(),
+        stock: Number(item.stock || 0),
+        rate: Number(item.rate || 0),
+        supplier: String(item.supplier || "").trim(),
+        restoredAt: new Date().toISOString()
+      };
+      if (!medicine.name || !medicine.batch || !medicine.expiry) continue;
+      db.medicines.unshift(medicine);
+      existingMedicineKeys.add(key);
+      addAudit(db, user.name, "Restored medicine stock", medicine.id);
+    }
+
+    const validRoles = [...new Set(Object.values(permissions).flat())];
+    const existingUserEmails = new Set((db.users || []).map((item) => String(item.email || "").toLowerCase()));
+    for (const item of Array.isArray(body.users) ? body.users : []) {
+      const email = String(item.email || "").trim().toLowerCase();
+      const password = String(item.password || "");
+      if (!item.name || !email || !validRoles.includes(item.role) || existingUserEmails.has(email) || password.length < 6) continue;
+      const restoredUser = {
+        id: nextId("USR", db.users),
+        name: String(item.name).trim(),
+        email,
+        role: item.role,
+        ...hashPassword(password),
+        isActive: true,
+        restoredAt: new Date().toISOString()
+      };
+      db.users.push(restoredUser);
+      existingUserEmails.add(email);
+      addAudit(db, user.name, "Restored user", email);
+    }
+
+    await writeDb(db);
+    return sendJson(res, 200, publicDb(db));
   }
 
   if (req.method === "POST" && pathname === "/api/admissions") {

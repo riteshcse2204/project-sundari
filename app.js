@@ -1,5 +1,6 @@
 const storeKey = "sundari-care-offline-v2";
 const cacheKey = "sundari-care-last-good-v1";
+const pendingRestoreKey = "sundari-care-pending-restore-v1";
 const sessionKey = "sundari-care-session";
 
 const fallbackData = {
@@ -175,6 +176,31 @@ function saveLastGoodState() {
   localStorage.setItem(cacheKey, JSON.stringify(state));
 }
 
+function pendingRestore() {
+  try {
+    return JSON.parse(localStorage.getItem(pendingRestoreKey) || '{"users":[]}');
+  } catch {
+    return { users: [] };
+  }
+}
+
+function savePendingRestore(records) {
+  localStorage.setItem(pendingRestoreKey, JSON.stringify(records));
+}
+
+function rememberUserForRestore(user) {
+  const records = pendingRestore();
+  const email = String(user.email || "").toLowerCase();
+  records.users = (records.users || []).filter((item) => String(item.email || "").toLowerCase() !== email);
+  records.users.push({
+    name: user.name,
+    email,
+    role: user.role,
+    password: user.password
+  });
+  savePendingRestore(records);
+}
+
 function medicineKey(medicine) {
   return [medicine.name, medicine.batch, medicine.expiry]
     .map((value) => String(value || "").trim().toLowerCase())
@@ -226,9 +252,34 @@ async function syncLocalMedicines(serverState) {
   return syncedState;
 }
 
+async function syncLocalRecords(serverState) {
+  if (!hasPermission("admin")) return syncLocalMedicines(serverState);
+
+  const serverMedicineKeys = new Set((serverState.medicines || []).map(medicineKey));
+  const localMedicineKeys = new Set();
+  const medicines = localMedicineDrafts().filter((medicine) => {
+    const key = medicineKey(medicine);
+    if (!key || serverMedicineKeys.has(key) || localMedicineKeys.has(key)) return false;
+    localMedicineKeys.add(key);
+    return true;
+  });
+
+  const serverUserEmails = new Set((serverState.users || []).map((user) => String(user.email || "").toLowerCase()));
+  const users = (pendingRestore().users || []).filter((user) => !serverUserEmails.has(String(user.email || "").toLowerCase()));
+
+  if (!medicines.length && !users.length) return serverState;
+
+  const restoredState = await api("/api/restore-records", {
+    method: "POST",
+    body: JSON.stringify({ medicines, users })
+  });
+  localStorage.removeItem(storeKey);
+  return restoredState;
+}
+
 async function loadBootstrap() {
   try {
-    state = await syncLocalMedicines(await api("/api/bootstrap"));
+    state = await syncLocalRecords(await api("/api/bootstrap"));
     apiOnline = true;
     saveLastGoodState();
   } catch (error) {
@@ -423,11 +474,13 @@ function renderDoctor() {
 
 function renderBills() {
   document.getElementById("billList").innerHTML = state.bills.length
-    ? `<table class="table"><thead><tr><th>Receipt</th><th>Patient</th><th>Service</th><th>Total</th><th>Paid</th><th>Due</th><th>Action</th></tr></thead><tbody>${state.bills.map((bill) => `
+    ? `<table class="table"><thead><tr><th>Receipt</th><th>Patient</th><th>Service</th><th>Subtotal</th><th>Discount</th><th>Total</th><th>Paid</th><th>Due</th><th>Action</th></tr></thead><tbody>${state.bills.map((bill) => `
       <tr>
         <td><strong>${bill.id}</strong><span>${bill.date}</span></td>
         <td>${bill.patientName}</td>
         <td>${bill.service}<span>${bill.items?.length ? `${bill.items.length} items` : "Single item"}</span></td>
+        <td>${currency(bill.subtotal || Number(bill.total || 0) + Number(bill.discount || 0))}</td>
+        <td>${currency(bill.discount)}</td>
         <td>${currency(bill.total)}</td>
         <td>${currency(bill.paid)}</td>
         <td>${currency(bill.due)}</td>
@@ -457,12 +510,14 @@ function renderMedicines() {
 
 function renderPharmacySales() {
   document.getElementById("pharmacySaleList").innerHTML = state.pharmacySales?.length
-    ? `<table class="table"><thead><tr><th>Bill</th><th>Patient</th><th>Medicine</th><th>Qty</th><th>Total</th><th>Action</th></tr></thead><tbody>${state.pharmacySales.map((sale) => `
+    ? `<table class="table"><thead><tr><th>Bill</th><th>Patient</th><th>Medicine</th><th>Qty</th><th>Subtotal</th><th>Discount</th><th>Total</th><th>Action</th></tr></thead><tbody>${state.pharmacySales.map((sale) => `
       <tr>
         <td><strong>${sale.id}</strong><span>${sale.date}</span></td>
         <td>${sale.patientName}</td>
         <td>${sale.medicineName}<span>${sale.items?.length ? `${sale.items.length} items` : `Batch ${sale.batch}`}</span></td>
         <td>${sale.qty}</td>
+        <td>${currency(sale.subtotal || Number(sale.total || 0) + Number(sale.discount || 0))}</td>
+        <td>${currency(sale.discount)}</td>
         <td>${currency(sale.total)}</td>
         <td><button class="mini-button" data-print-pharmacy="${sale.id}">Print</button></td>
       </tr>`).join("")}</tbody></table>`
@@ -594,8 +649,9 @@ function updateBillTotalPreview() {
   const discount = Number(document.querySelector("#billForm [name='discount']")?.value || 0);
   const paidInput = document.querySelector("#billForm [name='paid']");
   const subtotal = collectBillItems().reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.rate || 0), 0);
-  const total = Math.max(subtotal - discount, 0);
-  document.getElementById("billTotalPreview").textContent = `Subtotal: ${currency(subtotal)} | Discount: ${currency(discount)} | Total: ${currency(total)}`;
+  const appliedDiscount = Math.min(Math.max(discount, 0), subtotal);
+  const total = Math.max(subtotal - appliedDiscount, 0);
+  document.getElementById("billTotalPreview").textContent = `Subtotal: ${currency(subtotal)} | Discount: ${currency(appliedDiscount)} | Total: ${currency(total)}`;
   if (paidInput && (!paidInput.dataset.touched || Number(paidInput.value || 0) === 0)) {
     paidInput.value = total;
   }
@@ -655,7 +711,8 @@ function saleItemAmount(item) {
 function updateSaleTotalPreview() {
   const discount = Number(document.querySelector("#pharmacySaleForm [name='discount']")?.value || 0);
   const subtotal = collectSaleItems().reduce((sum, item) => sum + saleItemAmount(item), 0);
-  document.getElementById("saleTotalPreview").textContent = `Subtotal: ${currency(subtotal)} | Discount: ${currency(discount)} | Total: ${currency(Math.max(subtotal - discount, 0))}`;
+  const appliedDiscount = Math.min(Math.max(discount, 0), subtotal);
+  document.getElementById("saleTotalPreview").textContent = `Subtotal: ${currency(subtotal)} | Discount: ${currency(appliedDiscount)} | Total: ${currency(Math.max(subtotal - appliedDiscount, 0))}`;
 }
 
 function resetSaleItems() {
@@ -1107,6 +1164,8 @@ document.getElementById("userForm").addEventListener("submit", async (event) => 
   showMessage("userFormMessage", "");
   try {
     state = await api("/api/users", { method: "POST", body: JSON.stringify(data) });
+    rememberUserForRestore(data);
+    saveLastGoodState();
     resetForm(form);
     renderAll();
     showMessage("userFormMessage", "User created successfully.");
