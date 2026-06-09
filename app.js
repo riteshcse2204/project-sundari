@@ -1,30 +1,15 @@
-const storeKey = "sundari-care-offline-v2";
-const cacheKey = "sundari-care-last-good-v1";
+const storeKey = "sundari-care-offline-v3";
+const cacheKey = "sundari-care-last-good-v2";
 const pendingRestoreKey = "sundari-care-pending-restore-v1";
 const sessionKey = "sundari-care-session";
 
 const fallbackData = {
   users: [{ id: "USR-1", name: "Sundari Admin", email: "admin@sundaricare.local", role: "Admin" }],
-  patients: [
-    {
-      id: "SC-1001",
-      name: "Anita Devi",
-      age: 34,
-      gender: "Female",
-      mobile: "9876543210",
-      address: "Patna",
-      doctor: "Dr. Sharma",
-      status: "Waiting",
-      createdAt: new Date().toISOString()
-    }
-  ],
+  patients: [],
   prescriptions: [],
   bills: [],
   pharmacySales: [],
-  medicines: [
-    { id: "MED-1", name: "Paracetamol 650", batch: "P650A", expiry: "2027-04", stock: 18, rate: 24, supplier: "Care Pharma" },
-    { id: "MED-2", name: "Azithromycin 500", batch: "AZ500", expiry: "2026-12", stock: 7, rate: 92, supplier: "Medline" }
-  ],
+  medicines: [],
   admissions: [],
   expenses: [],
   auditLogs: []
@@ -297,9 +282,9 @@ async function loadBootstrap() {
   renderAll();
 }
 
-async function postData(path, payload, offlineHandler) {
+async function postData(path, payload, offlineHandler, options = {}) {
   const enriched = { ...payload, createdBy: currentUser?.name || "Demo user" };
-  if (apiOnline) {
+  if (apiOnline || options.requireServerSave) {
     try {
       state = await api(path, { method: "POST", body: JSON.stringify(enriched) });
       saveLastGoodState();
@@ -312,6 +297,10 @@ async function postData(path, payload, offlineHandler) {
       }
       apiOnline = false;
     }
+  }
+  if (options.requireServerSave) {
+    alert(options.offlineMessage || "Server se connect nahi ho paaya. Record database mein save nahi hua, isliye dobara try karein.");
+    return false;
   }
   offlineHandler(enriched);
   saveOffline();
@@ -1058,10 +1047,13 @@ document.getElementById("medicineForm").addEventListener("submit", async (event)
   event.preventDefault();
   const form = event.currentTarget;
   const data = Object.fromEntries(new FormData(form));
-  await postData("/api/medicines", data, (payload) => {
+  const saved = await postData("/api/medicines", data, (payload) => {
     state.medicines.unshift({ id: `MED-${Date.now().toString().slice(-5)}`, ...payload, stock: Number(payload.stock), rate: Number(payload.rate) });
+  }, {
+    requireServerSave: true,
+    offlineMessage: "Medicine database mein save nahi ho paayi. Server connection check karke phir Add Medicine karein."
   });
-  resetForm(form);
+  if (saved) resetForm(form);
 });
 
 document.getElementById("addStockSaleItem").addEventListener("click", () => addSaleItem("stock"));
