@@ -87,14 +87,20 @@ async function initStorage() {
 }
 
 async function readDb() {
-  if (!pgPool) return readJsonDb();
+  if (!pgPool) {
+    const db = await readJsonDb();
+    if (removeDemoSeedRecords(db)) await writeJsonDb(db);
+    return db;
+  }
   const result = await pgPool.query("SELECT data FROM app_state WHERE id = $1", ["default"]);
   if (!result.rowCount) {
     const seed = await readJsonDb();
     await writeDb(seed);
     return seed;
   }
-  return result.rows[0].data;
+  const db = result.rows[0].data;
+  if (removeDemoSeedRecords(db)) await writeDb(db);
+  return db;
 }
 
 async function writeDb(db) {
@@ -131,6 +137,51 @@ function collectBody(req) {
     });
     req.on("error", reject);
   });
+}
+
+function removeDemoSeedRecords(db) {
+  let changed = false;
+  const demoPatientIds = new Set(["SC-1001", "SC-1002"]);
+  const demoPatientNames = new Set(["anita devi", "kavita kumari"]);
+  const demoMedicineIds = new Set(["MED-1", "MED-2"]);
+  const demoMedicineKeys = new Set(["paracetamol 650|p650a", "azithromycin 500|az500"]);
+
+  const filterList = (key, predicate) => {
+    const list = Array.isArray(db[key]) ? db[key] : [];
+    const filtered = list.filter(predicate);
+    if (filtered.length !== list.length) {
+      db[key] = filtered;
+      changed = true;
+    }
+  };
+
+  filterList("patients", (patient) => {
+    const name = String(patient.name || "").trim().toLowerCase();
+    return !demoPatientIds.has(patient.id) && !demoPatientNames.has(name);
+  });
+
+  filterList("medicines", (medicine) => {
+    const key = `${String(medicine.name || "").trim().toLowerCase()}|${String(medicine.batch || "").trim().toLowerCase()}`;
+    return !demoMedicineIds.has(medicine.id) && !demoMedicineKeys.has(key);
+  });
+
+  filterList("pharmacySales", (sale) => (
+    !demoPatientIds.has(sale.patientId)
+    && !demoMedicineIds.has(sale.medicineId)
+    && !demoPatientNames.has(String(sale.patientName || "").trim().toLowerCase())
+  ));
+
+  filterList("admissions", (admission) => (
+    !demoPatientIds.has(admission.patientId)
+    && !demoPatientNames.has(String(admission.patientName || "").trim().toLowerCase())
+  ));
+
+  filterList("auditLogs", (log) => (
+    !demoPatientIds.has(log.entity)
+    && !["PH-1653342", "IPD-1238774"].includes(log.entity)
+  ));
+
+  return changed;
 }
 
 function publicDb(db) {

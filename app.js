@@ -2,6 +2,13 @@ const storeKey = "sundari-care-offline-v3";
 const cacheKey = "sundari-care-last-good-v2";
 const pendingRestoreKey = "sundari-care-pending-restore-v1";
 const sessionKey = "sundari-care-session";
+const legacyCacheKeys = [
+  "sundari-care-offline-v1",
+  "sundari-care-offline-v2",
+  "sundari-care-last-good-v1"
+];
+
+legacyCacheKeys.forEach((key) => localStorage.removeItem(key));
 
 const fallbackData = {
   users: [{ id: "USR-1", name: "Sundari Admin", email: "admin@sundaricare.local", role: "Admin" }],
