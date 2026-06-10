@@ -37,6 +37,7 @@ let selectedPatientId = null;
 let apiOnline = true;
 let billItemCounter = 0;
 let saleItemCounter = 0;
+let deferredInstallPrompt = null;
 
 const clinic = {
   name: "Sundari Care & Nursing Home",
@@ -89,6 +90,34 @@ const viewPermissions = {
   reports: "reports",
   admin: "admin"
 };
+
+function isInstalledApp() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function setInstallPromptState(available) {
+  const installCard = document.getElementById("installAppCard");
+  const installButton = document.getElementById("installAppBtn");
+  const installNote = document.getElementById("installAppNote");
+  if (!installCard || !installButton || !installNote) return;
+
+  installCard.hidden = !available || isInstalledApp();
+  installButton.disabled = !available;
+  installNote.textContent = available
+    ? "Install Sundari Care on this device for quick access."
+    : "App install option will appear when this site is opened on a supported HTTPS browser.";
+}
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  setInstallPromptState(true);
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  setInstallPromptState(false);
+});
 
 function currency(value) {
   return `Rs ${Number(value || 0).toLocaleString("en-IN")}`;
@@ -878,6 +907,32 @@ document.querySelectorAll("[data-login-note]").forEach((button) => {
       ? "New staff accounts are created only by Admin from Admin > Create Staff User. Admin can create IDs for doctor, reception, billing, pharmacy, nursing and accounts users."
       : "For password reset, contact Admin. Admin can create a new staff login or update access from the Admin section.";
   });
+});
+
+document.getElementById("installAppBtn")?.addEventListener("click", async () => {
+  const installButton = document.getElementById("installAppBtn");
+  const installNote = document.getElementById("installAppNote");
+  if (!deferredInstallPrompt) {
+    if (installNote) {
+      installNote.textContent = "Install option is available after deploying on HTTPS and opening in a supported browser.";
+    }
+    return;
+  }
+
+  installButton.disabled = true;
+  deferredInstallPrompt.prompt();
+  const choice = await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+
+  if (choice.outcome === "accepted") {
+    setInstallPromptState(false);
+    return;
+  }
+
+  if (installNote) {
+    installNote.textContent = "You can install later from this button or the browser menu.";
+  }
+  installButton.disabled = false;
 });
 
 document.getElementById("loginForm").addEventListener("submit", async (event) => {
