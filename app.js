@@ -10,6 +10,14 @@ const legacyCacheKeys = [
 
 legacyCacheKeys.forEach((key) => localStorage.removeItem(key));
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js").catch((error) => {
+      console.warn("Service worker registration failed:", error);
+    });
+  });
+}
+
 const fallbackData = {
   users: [{ id: "USR-1", name: "Sundari Admin", email: "admin@sundaricare.local", role: "Admin" }],
   patients: [],
