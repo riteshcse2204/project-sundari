@@ -124,7 +124,6 @@ async function initStorage() {
 async function readDb() {
   if (!pgPool) {
     const db = await readJsonDb();
-    if (removeDemoSeedRecords(db)) await writeJsonDb(db);
     return db;
   }
   const result = await pgPool.query("SELECT data FROM app_state WHERE id = $1", ["default"]);
@@ -134,7 +133,6 @@ async function readDb() {
     return seed;
   }
   const db = result.rows[0].data;
-  if (removeDemoSeedRecords(db)) await writeDb(db);
   return db;
 }
 
@@ -293,6 +291,28 @@ function medicineKey(medicine) {
   return [medicine.name, medicine.batch, medicine.expiry]
     .map((value) => String(value || "").trim().toLowerCase())
     .join("|");
+}
+
+function patientSnapshot(patient, fallbackId) {
+  if (!patient) {
+    return {
+      id: fallbackId || "",
+      name: "Walk-in",
+      age: "",
+      gender: "",
+      mobile: "",
+      address: ""
+    };
+  }
+  return {
+    id: patient.id,
+    name: patient.name,
+    age: patient.age,
+    gender: patient.gender,
+    mobile: patient.mobile,
+    address: patient.address || "",
+    doctor: patient.doctor || ""
+  };
 }
 
 function nextPatientId(patients) {
@@ -481,13 +501,14 @@ async function handleApi(req, res, pathname) {
     const user = requirePermission(req, res, db, "prescribe");
     if (!user) return;
     const body = await collectBody(req);
+    const patient = db.patients.find((item) => item.id === body.patientId);
     const prescription = {
       id: nextId("RX", db.prescriptions),
       date: new Date().toLocaleDateString("en-IN"),
-      ...body
+      ...body,
+      patientDetails: patientSnapshot(patient, body.patientId)
     };
     db.prescriptions.unshift(prescription);
-    const patient = db.patients.find((item) => item.id === body.patientId);
     if (patient) patient.status = "Completed";
     addAudit(db, user.name, "Saved prescription", prescription.id);
     await writeDb(db);
@@ -510,10 +531,12 @@ async function handleApi(req, res, pathname) {
     const discount = boundedDiscount(body.discount, subtotal);
     const total = Math.max(subtotal - discount, 0);
     const paid = Number(body.paid || 0);
+    const patientDetails = patientSnapshot(patient, body.patient);
     const bill = {
       id: nextId("RCPT", db.bills),
-      patientId: body.patient,
-      patientName: patient?.name || "Walk-in",
+      patientId: patientDetails.id,
+      patientName: patientDetails.name,
+      patientDetails,
       service: items.map((item) => item.description).join(", "),
       items,
       subtotal,
@@ -566,10 +589,12 @@ async function handleApi(req, res, pathname) {
     const subtotal = items.reduce((sum, item) => sum + item.total, 0);
     const discount = boundedDiscount(body.discount, subtotal);
     const total = Math.max(subtotal - discount, 0);
+    const patientDetails = patientSnapshot(patient, body.patient);
     const sale = {
       id: nextId("PH", db.pharmacySales || []),
-      patientId: body.patient,
-      patientName: patient?.name || "Walk-in",
+      patientId: patientDetails.id,
+      patientName: patientDetails.name,
+      patientDetails,
       medicineId: items[0].medicineId,
       medicineName: items.map((item) => item.medicineName).join(", "),
       batch: items.map((item) => item.batch).join(", "),

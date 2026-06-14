@@ -101,9 +101,11 @@ function setInstallPromptState(available) {
   const installNote = document.getElementById("installAppNote");
   if (!installCard || !installButton || !installNote) return;
 
-  installCard.hidden = !available || isInstalledApp();
-  installButton.disabled = !available;
-  installNote.textContent = available
+  installCard.hidden = false;
+  installButton.disabled = false;
+  installNote.textContent = isInstalledApp()
+    ? "Sundari Care is already running as an installed app on this device."
+    : available
     ? "Install Sundari Care on this device for quick access."
     : "App install option will appear when this site is opened on a supported HTTPS browser.";
 }
@@ -119,8 +121,37 @@ window.addEventListener("appinstalled", () => {
   setInstallPromptState(false);
 });
 
+setInstallPromptState(false);
+
 function currency(value) {
   return `Rs ${Number(value || 0).toLocaleString("en-IN")}`;
+}
+
+function patientSnapshot(patient, fallbackId) {
+  if (!patient) {
+    return {
+      id: fallbackId || "",
+      name: "Walk-in",
+      age: "",
+      gender: "",
+      mobile: "",
+      address: ""
+    };
+  }
+  return {
+    id: patient.id,
+    name: patient.name,
+    age: patient.age,
+    gender: patient.gender,
+    mobile: patient.mobile,
+    address: patient.address || "",
+    doctor: patient.doctor || ""
+  };
+}
+
+function recordPatientDetails(record) {
+  const livePatient = state.patients.find((item) => item.id === record.patientId);
+  return record.patientDetails || patientSnapshot(livePatient, record.patientId);
 }
 
 function nextPatientId(patients) {
@@ -783,11 +814,11 @@ function closePrintModal() {
 }
 
 function prescriptionDocument(prescription) {
-  const patient = state.patients.find((item) => item.id === prescription.patientId);
+  const patient = recordPatientDetails(prescription);
   return `${letterhead("Prescription", prescription.id, prescription.date)}
     <div class="print-section">
       <h4>Patient Details</h4>
-      <p><strong>${patient?.name || prescription.patientId}</strong> | ${patient?.age || "-"} / ${patient?.gender || "-"} | ${patient?.mobile || "-"}</p>
+      <p><strong>${patient.name || prescription.patientId}</strong> | ${patient.age || "-"} / ${patient.gender || "-"} | ${patient.mobile || "-"}</p>
     </div>
     <div class="print-section">
       <h4>Clinical Notes</h4>
@@ -804,7 +835,7 @@ function prescriptionDocument(prescription) {
 }
 
 function billDocument(bill) {
-  const patient = state.patients.find((item) => item.id === bill.patientId);
+  const patient = recordPatientDetails(bill);
   const items = bill.items?.length
     ? bill.items
     : [{
@@ -817,11 +848,11 @@ function billDocument(bill) {
     <div class="print-section">
       <h4>Patient Details</h4>
       <table class="print-table patient-summary-table">
-        <tr><th>Patient</th><td>${bill.patientName}</td></tr>
-        <tr><th>UHID</th><td>${bill.patientId || "-"}</td></tr>
-        <tr><th>Age / Gender</th><td>${patient ? `${patient.age} / ${patient.gender}` : "-"}</td></tr>
-        <tr><th>Mobile</th><td>${patient?.mobile || "-"}</td></tr>
-        <tr><th>Address</th><td>${patient?.address || "-"}</td></tr>
+        <tr><th>Patient</th><td>${patient.name || bill.patientName || "Walk-in"}</td></tr>
+        <tr><th>UHID</th><td>${patient.id || bill.patientId || "-"}</td></tr>
+        <tr><th>Age / Gender</th><td>${patient.age || "-"} / ${patient.gender || "-"}</td></tr>
+        <tr><th>Mobile</th><td>${patient.mobile || "-"}</td></tr>
+        <tr><th>Address</th><td>${patient.address || "-"}</td></tr>
       </table>
     </div>
     <div class="print-section">
@@ -851,7 +882,7 @@ function billDocument(bill) {
 }
 
 function pharmacyDocument(sale) {
-  const patient = state.patients.find((item) => item.id === sale.patientId);
+  const patient = recordPatientDetails(sale);
   const items = sale.items?.length
     ? sale.items
     : [{
@@ -865,10 +896,10 @@ function pharmacyDocument(sale) {
     <div class="print-section">
       <h4>Patient Details</h4>
       <table class="print-table patient-summary-table">
-        <tr><th>Patient</th><td>${sale.patientName}</td></tr>
-        <tr><th>UHID</th><td>${sale.patientId || "-"}</td></tr>
-        <tr><th>Age / Gender</th><td>${patient ? `${patient.age} / ${patient.gender}` : "-"}</td></tr>
-        <tr><th>Mobile</th><td>${patient?.mobile || "-"}</td></tr>
+        <tr><th>Patient</th><td>${patient.name || sale.patientName || "Walk-in"}</td></tr>
+        <tr><th>UHID</th><td>${patient.id || sale.patientId || "-"}</td></tr>
+        <tr><th>Age / Gender</th><td>${patient.age || "-"} / ${patient.gender || "-"}</td></tr>
+        <tr><th>Mobile</th><td>${patient.mobile || "-"}</td></tr>
       </table>
     </div>
     <div class="rx-divider"><span></span><strong>Rx</strong><span></span></div>
@@ -914,7 +945,7 @@ document.getElementById("installAppBtn")?.addEventListener("click", async () => 
   const installNote = document.getElementById("installAppNote");
   if (!deferredInstallPrompt) {
     if (installNote) {
-      installNote.textContent = "Install option is available after deploying on HTTPS and opening in a supported browser.";
+      installNote.textContent = "Install prompt ke liye app ko HTTPS par supported browser mein open karein. Browser menu se bhi Install/Add to Home Screen use kar sakte hain.";
     }
     return;
   }
@@ -1067,8 +1098,13 @@ document.getElementById("prescriptionForm").addEventListener("submit", async (ev
   const form = event.currentTarget;
   const data = { patientId: selectedPatientId, ...Object.fromEntries(new FormData(form)) };
   await postData("/api/prescriptions", data, (payload) => {
-    state.prescriptions.unshift({ id: `RX-${Date.now()}`, date: new Date().toLocaleDateString("en-IN"), ...payload });
     const patient = state.patients.find((item) => item.id === selectedPatientId);
+    state.prescriptions.unshift({
+      id: `RX-${Date.now()}`,
+      date: new Date().toLocaleDateString("en-IN"),
+      ...payload,
+      patientDetails: patientSnapshot(patient, selectedPatientId)
+    });
     if (patient) patient.status = "Completed";
   });
   resetForm(form);
@@ -1080,6 +1116,7 @@ document.getElementById("billForm").addEventListener("submit", async (event) => 
   const data = { ...Object.fromEntries(new FormData(form)), items: collectBillItems() };
   const saved = await postData("/api/bills", data, (payload) => {
     const patient = state.patients.find((item) => item.id === payload.patient);
+    const patientDetails = patientSnapshot(patient, payload.patient);
     const items = payload.items.map((item) => ({
       description: item.description,
       qty: Number(item.qty || 0),
@@ -1093,8 +1130,9 @@ document.getElementById("billForm").addEventListener("submit", async (event) => 
     const paid = Number(payload.paid || 0);
     state.bills.unshift({
       id: `RCPT-${Date.now().toString().slice(-6)}`,
-      patientId: payload.patient,
-      patientName: patient?.name || "Walk-in",
+      patientId: patientDetails.id,
+      patientName: patientDetails.name,
+      patientDetails,
       service: items.map((item) => item.description).join(", "),
       items,
       subtotal,
@@ -1138,6 +1176,7 @@ document.getElementById("pharmacySaleForm").addEventListener("submit", async (ev
   if (!data.items.length) return;
   const saved = await postData("/api/pharmacy-sales", data, (payload) => {
     const patient = state.patients.find((item) => item.id === payload.patient);
+    const patientDetails = patientSnapshot(patient, payload.patient);
     const items = payload.items.map((item) => {
       if (item.type === "manual") {
         return {
@@ -1170,8 +1209,9 @@ document.getElementById("pharmacySaleForm").addEventListener("submit", async (ev
     });
     state.pharmacySales.unshift({
       id: `PH-${Date.now().toString().slice(-6)}`,
-      patientId: payload.patient,
-      patientName: patient?.name || "Walk-in",
+      patientId: patientDetails.id,
+      patientName: patientDetails.name,
+      patientDetails,
       medicineId: items[0].medicineId,
       medicineName: items.map((item) => item.medicineName).join(", "),
       batch: items.map((item) => item.batch).join(", "),
