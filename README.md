@@ -4,7 +4,7 @@ Premium clinic and nursing home management software starter.
 
 ## Current Version
 
-This is a Phase 1 web app with a dependency-free Node.js backend and JSON database.
+This is a Phase 1 web app with a dependency-light Node.js backend, local JSON storage, and optional PostgreSQL storage through `DATABASE_URL`.
 
 - Dashboard
 - Secure demo login
@@ -29,6 +29,7 @@ This is a Phase 1 web app with a dependency-free Node.js backend and JSON databa
 - JSON backup download
 - Prescription, receipt and pharmacy bill print previews
 - Local API persistence in `data/db.json`
+- PostgreSQL persistence when `DATABASE_URL` is set
 - Print support
 
 ## Run Locally
@@ -66,7 +67,7 @@ See [DEPLOYMENT.md](/Users/riteshkumar/Documents/Codex/2026-05-24/hii-mujhe-ek-a
 
 Required production improvements before real patient use:
 
-- Connect API repository layer to PostgreSQL using `DATABASE_URL`
+- Configure PostgreSQL through `DATABASE_URL` before storing production patient data
 - Rotate demo passwords and enforce password policy
 - Add HTTPS
 - Add automatic backups

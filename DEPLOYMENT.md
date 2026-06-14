@@ -26,6 +26,45 @@ Health check:
 http://localhost:4174/api/health
 ```
 
+## Local PostgreSQL Setup
+
+Create a PostgreSQL database and user:
+
+```bash
+createdb sundari_care
+```
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set your local database URL:
+
+```text
+DATABASE_URL=postgresql://your_user:your_password@localhost:5432/sundari_care
+DATABASE_SSL=false
+```
+
+Start the app:
+
+```bash
+npm run dev
+```
+
+On first startup, the server creates the `app_state` table automatically and copies the current `data/db.json` seed into PostgreSQL. Confirm the connection at:
+
+```text
+http://localhost:4174/api/health
+```
+
+Expected response includes:
+
+```json
+{"storage":"postgresql"}
+```
+
 ## Docker
 
 ```bash

@@ -1,9 +1,44 @@
 const http = require("node:http");
 const crypto = require("node:crypto");
+const fsSync = require("node:fs");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
 const root = __dirname;
+
+function loadEnvFile() {
+  const envPath = path.join(root, ".env");
+  let text;
+  try {
+    text = fsSync.readFileSync(envPath, "utf-8");
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex === -1) continue;
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    let value = trimmed.slice(separatorIndex + 1).trim();
+    if (!key || process.env[key] !== undefined) continue;
+
+    if (
+      (value.startsWith("\"") && value.endsWith("\"")) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
+loadEnvFile();
+
 const dataFile = process.env.DATA_FILE ? path.resolve(process.env.DATA_FILE) : path.join(root, "data", "db.json");
 const port = Number(process.env.PORT || 4174);
 const sessions = new Map();
