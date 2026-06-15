@@ -864,7 +864,7 @@ async function serveStatic(res, pathname) {
   }
 }
 
-const server = http.createServer(async (req, res) => {
+async function requestHandler(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname.startsWith("/api/")) {
@@ -874,17 +874,29 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     sendJson(res, 500, { error: error.message });
   }
-});
+}
 
-initStorage()
+const server = http.createServer(requestHandler);
+
+const storageReady = initStorage()
   .catch((error) => {
     storageMode = "postgresql-error";
     storageError = error.message;
     pgPool = null;
     console.error("Failed to initialize PostgreSQL storage. Falling back to json-file storage:", error.message);
-  })
-  .finally(() => {
+  });
+
+if (require.main === module) {
+  storageReady.finally(() => {
     server.listen(port, () => {
       console.log(`Sundari Care server running at http://localhost:${port} using ${storageMode} storage`);
     });
   });
+}
+
+module.exports = async function handler(req, res) {
+  await storageReady;
+  return requestHandler(req, res);
+};
+
+module.exports.server = server;
