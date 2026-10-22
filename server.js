@@ -287,6 +287,16 @@ function boundedDiscount(value, subtotal) {
   return Math.min(discount, subtotal);
 }
 
+function pharmacyDiscount(body, subtotal) {
+  if (body.discountPercent === undefined) {
+    const discount = boundedDiscount(body.discount, subtotal);
+    return { discount, discountPercent: subtotal ? discount / subtotal * 100 : 0 };
+  }
+  const discountPercent = Number(body.discountPercent);
+  if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) return null;
+  return { discount: subtotal * discountPercent / 100, discountPercent };
+}
+
 function medicineKey(medicine) {
   return [medicine.name, medicine.batch, medicine.expiry]
     .map((value) => String(value || "").trim().toLowerCase())
@@ -351,6 +361,20 @@ function normalizeSaleItems(body, db) {
       stockMedicine
     };
   });
+}
+
+function saleStockQuantities(sale) {
+  const quantities = new Map();
+  const items = sale.items?.length
+    ? sale.items
+    : sale.medicineId
+      ? [{ type: "stock", medicineId: sale.medicineId, qty: sale.qty }]
+      : [];
+  items.forEach((item) => {
+    const medicineId = item.type === "manual" ? null : item.medicineId;
+    if (medicineId) quantities.set(medicineId, (quantities.get(medicineId) || 0) + Number(item.qty || 0));
+  });
+  return quantities;
 }
 
 function normalizeBillItems(body) {
@@ -587,7 +611,9 @@ async function handleApi(req, res, pathname) {
 
     const patient = db.patients.find((item) => item.id === body.patient);
     const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-    const discount = boundedDiscount(body.discount, subtotal);
+    const calculatedDiscount = pharmacyDiscount(body, subtotal);
+    if (!calculatedDiscount) return sendJson(res, 400, { error: "Discount percentage must be between 0 and 100" });
+    const { discount, discountPercent } = calculatedDiscount;
     const total = Math.max(subtotal - discount, 0);
     const patientDetails = patientSnapshot(patient, body.patient);
     const sale = {
@@ -603,6 +629,7 @@ async function handleApi(req, res, pathname) {
       items: items.map(({ stockMedicine, ...item }) => item),
       subtotal,
       discount,
+      discountPercent,
       total,
       mode: body.mode,
       date: new Date().toLocaleDateString("en-IN")
@@ -616,6 +643,91 @@ async function handleApi(req, res, pathname) {
     addAudit(db, user.name, "Pharmacy sale", sale.id);
     await writeDb(db);
     return sendJson(res, 201, publicDb(db));
+  }
+
+  const pharmacySaleMatch = pathname.match(/^\/api\/pharmacy-sales\/([^/]+)$/);
+  if (pharmacySaleMatch && req.method === "PUT") {
+    const user = requirePermission(req, res, db, "pharmacy");
+    if (!user) return;
+    const saleId = decodeURIComponent(pharmacySaleMatch[1]);
+    const sale = (db.pharmacySales || []).find((item) => item.id === saleId);
+    if (!sale) return sendJson(res, 404, { error: "Pharmacy sale not found" });
+
+    const body = await collectBody(req);
+    const items = normalizeSaleItems(body, db);
+    if (!items.length) return sendJson(res, 400, { error: "Add at least one medicine" });
+    for (const item of items) {
+      if (!item.medicineName) return sendJson(res, 400, { error: "Medicine name is required" });
+      if (!Number.isFinite(item.qty) || item.qty <= 0) return sendJson(res, 400, { error: "Quantity must be greater than zero" });
+      if (!Number.isFinite(item.rate) || item.rate < 0) return sendJson(res, 400, { error: "Rate cannot be negative" });
+      if (item.type === "stock" && !item.stockMedicine) return sendJson(res, 404, { error: "Medicine not found" });
+    }
+
+    const previousStock = saleStockQuantities(sale);
+    const requestedStock = new Map();
+    items.forEach((item) => {
+      if (item.stockMedicine) {
+        requestedStock.set(item.stockMedicine.id, (requestedStock.get(item.stockMedicine.id) || 0) + item.qty);
+      }
+    });
+    for (const [medicineId, qty] of requestedStock) {
+      const medicine = db.medicines.find((entry) => entry.id === medicineId);
+      const available = Number(medicine.stock) + (previousStock.get(medicineId) || 0);
+      if (available < qty) {
+        const requestedItem = items.find((item) => item.medicineId === medicineId);
+        return sendJson(res, 400, { error: `${requestedItem.medicineName} does not have enough stock` });
+      }
+    }
+
+    const patient = db.patients.find((item) => item.id === body.patient);
+    const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+    const calculatedDiscount = pharmacyDiscount(body, subtotal);
+    if (!calculatedDiscount) return sendJson(res, 400, { error: "Discount percentage must be between 0 and 100" });
+    const { discount, discountPercent } = calculatedDiscount;
+    previousStock.forEach((qty, medicineId) => {
+      const medicine = db.medicines.find((entry) => entry.id === medicineId);
+      if (medicine) medicine.stock = Number(medicine.stock) + qty;
+    });
+    items.forEach((item) => {
+      if (item.stockMedicine) item.stockMedicine.stock = Number(item.stockMedicine.stock) - item.qty;
+    });
+    const patientDetails = patientSnapshot(patient, body.patient);
+    Object.assign(sale, {
+      patientId: patientDetails.id,
+      patientName: patientDetails.name,
+      patientDetails,
+      medicineId: items[0].medicineId,
+      medicineName: items.map((item) => item.medicineName).join(", "),
+      batch: items.map((item) => item.batch).join(", "),
+      qty: items.reduce((sum, item) => sum + item.qty, 0),
+      rate: items.length === 1 ? items[0].rate : 0,
+      items: items.map(({ stockMedicine, ...item }) => item),
+      subtotal,
+      discount,
+      discountPercent,
+      total: Math.max(subtotal - discount, 0),
+      mode: body.mode
+    });
+    addAudit(db, user.name, "Edited pharmacy sale", sale.id);
+    await writeDb(db);
+    return sendJson(res, 200, publicDb(db));
+  }
+
+  if (pharmacySaleMatch && req.method === "DELETE") {
+    const user = requirePermission(req, res, db, "pharmacy");
+    if (!user) return;
+    const saleId = decodeURIComponent(pharmacySaleMatch[1]);
+    const sale = (db.pharmacySales || []).find((item) => item.id === saleId);
+    if (!sale) return sendJson(res, 404, { error: "Pharmacy sale not found" });
+
+    saleStockQuantities(sale).forEach((qty, medicineId) => {
+      const medicine = db.medicines.find((item) => item.id === medicineId);
+      if (medicine) medicine.stock = Number(medicine.stock) + qty;
+    });
+    db.pharmacySales = db.pharmacySales.filter((item) => item.id !== saleId);
+    addAudit(db, user.name, "Deleted pharmacy sale", sale.id);
+    await writeDb(db);
+    return sendJson(res, 200, publicDb(db));
   }
 
   if (req.method === "POST" && pathname === "/api/restore-records") {

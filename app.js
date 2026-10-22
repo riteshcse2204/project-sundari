@@ -33,10 +33,10 @@ const fallbackData = {
 let state = structuredClone(fallbackData);
 let currentSession = JSON.parse(localStorage.getItem(sessionKey) || "null");
 let currentUser = currentSession?.user || currentSession || null;
-let selectedPatientId = null;
 let apiOnline = true;
 let billItemCounter = 0;
 let saleItemCounter = 0;
+let editingPharmacySaleId = null;
 let deferredInstallPrompt = null;
 
 const clinic = {
@@ -353,7 +353,6 @@ async function loadBootstrap() {
     }
     loadOffline();
   }
-  selectedPatientId = state.patients[0]?.id || null;
   renderAll();
 }
 
@@ -389,7 +388,6 @@ async function deletePatient(patientId) {
   if (apiOnline) {
     try {
       state = await api(`/api/patients/${encodeURIComponent(patientId)}`, { method: "DELETE" });
-      if (selectedPatientId === patientId) selectedPatientId = state.patients[0]?.id || null;
       renderAll();
       return;
     } catch (error) {
@@ -404,7 +402,6 @@ async function deletePatient(patientId) {
   state.patients = state.patients.filter((patient) => patient.id !== patientId);
   state.prescriptions = state.prescriptions.filter((prescription) => prescription.patientId !== patientId);
   state.admissions = state.admissions.filter((admission) => admission.patientId !== patientId);
-  if (selectedPatientId === patientId) selectedPatientId = state.patients[0]?.id || null;
   saveOffline();
   renderAll();
 }
@@ -500,7 +497,7 @@ function renderPatients() {
         <td>${patient.doctor}</td>
         <td><span class="badge">${patient.status}</span></td>
         <td class="action-cell">
-          <button class="mini-button" data-select-patient="${patient.id}" data-go-doctor="true">Consult</button>
+          <button class="mini-button" data-print-patient="${patient.id}" type="button">Print</button>
           <button class="mini-button danger-button" data-delete-patient="${patient.id}" type="button">Delete</button>
         </td>
       </tr>`).join("")}</tbody></table>`
@@ -509,31 +506,6 @@ function renderPatients() {
   document.getElementById("billPatient").innerHTML = patientOptions();
   document.getElementById("admissionPatient").innerHTML = patientOptions();
   document.getElementById("pharmacyPatient").innerHTML = patientOptions();
-}
-
-function renderDoctor() {
-  document.getElementById("doctorQueue").innerHTML = state.patients.length
-    ? state.patients.map((patient) => `<div class="list-item">
-      <div><strong>${patient.name}</strong><span>${patient.id} | ${patient.mobile}</span></div>
-      <button class="mini-button" data-select-patient="${patient.id}">Open</button>
-    </div>`).join("")
-    : `<div class="empty">Queue is empty.</div>`;
-
-  const patient = state.patients.find((item) => item.id === selectedPatientId);
-  document.getElementById("selectedPatientBadge").textContent = patient ? `${patient.name} | ${patient.id}` : "Select patient";
-
-  document.getElementById("prescriptionList").innerHTML = state.prescriptions.length
-    ? `<table class="table"><thead><tr><th>Prescription</th><th>Patient</th><th>Diagnosis</th><th>Follow-up</th><th>Action</th></tr></thead><tbody>${state.prescriptions.map((prescription) => {
-      const rxPatient = state.patients.find((item) => item.id === prescription.patientId);
-      return `<tr>
-        <td><strong>${prescription.id}</strong><span>${prescription.date}</span></td>
-        <td>${rxPatient?.name || prescription.patientId}</td>
-        <td>${prescription.diagnosis || "-"}</td>
-        <td>${prescription.followup || "-"}</td>
-        <td><button class="mini-button" data-print-prescription="${prescription.id}">Print</button></td>
-      </tr>`;
-    }).join("")}</tbody></table>`
-    : `<div class="empty">No prescriptions saved yet.</div>`;
 }
 
 function renderBills() {
@@ -581,9 +553,13 @@ function renderPharmacySales() {
         <td>${sale.medicineName}<span>${sale.items?.length ? `${sale.items.length} items` : `Batch ${sale.batch}`}</span></td>
         <td>${sale.qty}</td>
         <td>${currency(sale.subtotal || Number(sale.total || 0) + Number(sale.discount || 0))}</td>
-        <td>${currency(sale.discount)}</td>
+        <td>${currency(sale.discount)}<span>${Number(sale.discountPercent ?? (sale.subtotal ? Number(sale.discount || 0) / Number(sale.subtotal) * 100 : 0))}%</span></td>
         <td>${currency(sale.total)}</td>
-        <td><button class="mini-button" data-print-pharmacy="${sale.id}">Print</button></td>
+        <td class="action-cell">
+          <button class="mini-button" data-print-pharmacy="${sale.id}" type="button">Print</button>
+          <button class="mini-button" data-edit-pharmacy="${sale.id}" type="button">Edit</button>
+          <button class="mini-button danger-button" data-delete-pharmacy="${sale.id}" type="button">Delete</button>
+        </td>
       </tr>`).join("")}</tbody></table>`
     : `<div class="empty">No pharmacy sale generated yet.</div>`;
 }
@@ -646,7 +622,6 @@ function renderAll() {
   renderDoctorOptions();
   renderDashboard();
   renderPatients();
-  renderDoctor();
   renderBills();
   renderMedicines();
   renderPharmacySales();
@@ -773,15 +748,86 @@ function saleItemAmount(item) {
 }
 
 function updateSaleTotalPreview() {
-  const discount = Number(document.querySelector("#pharmacySaleForm [name='discount']")?.value || 0);
+  const discountPercent = Number(document.querySelector("#pharmacySaleForm [name='discountPercent']")?.value || 0);
   const subtotal = collectSaleItems().reduce((sum, item) => sum + saleItemAmount(item), 0);
-  const appliedDiscount = Math.min(Math.max(discount, 0), subtotal);
-  document.getElementById("saleTotalPreview").textContent = `Subtotal: ${currency(subtotal)} | Discount: ${currency(appliedDiscount)} | Total: ${currency(Math.max(subtotal - appliedDiscount, 0))}`;
+  const appliedPercent = Math.min(Math.max(discountPercent, 0), 100);
+  const discount = subtotal * appliedPercent / 100;
+  document.getElementById("saleTotalPreview").textContent = `Subtotal: ${currency(subtotal)} | Discount: ${currency(discount)} (${appliedPercent}%) | Total: ${currency(Math.max(subtotal - discount, 0))}`;
 }
 
 function resetSaleItems() {
   document.getElementById("saleItems").innerHTML = "";
   addSaleItem("stock");
+}
+
+function startEditingPharmacySale(saleId) {
+  const sale = state.pharmacySales.find((item) => item.id === saleId);
+  if (!sale) return;
+
+  const form = document.getElementById("pharmacySaleForm");
+  const saleItems = sale.items?.length
+    ? sale.items
+    : [{
+        type: sale.medicineId ? "stock" : "manual",
+        medicineId: sale.medicineId,
+        medicineName: sale.medicineName,
+        batch: sale.batch,
+        qty: sale.qty,
+        rate: sale.rate
+      }];
+  document.getElementById("saleItems").innerHTML = "";
+  saleItems.forEach((item) => {
+    const medicine = item.type !== "manual" && state.medicines.find((entry) => entry.id === (item.medicineId || item.medicine));
+    const type = medicine ? "stock" : "manual";
+    addSaleItem(type);
+    const row = document.querySelector("#saleItems [data-sale-item]:last-child");
+    if (type === "manual") {
+      row.querySelector("[data-sale-name]").value = item.medicineName || item.name || "";
+      row.querySelector("[data-sale-batch]").value = item.batch || "Manual";
+      row.querySelector("[data-sale-rate]").value = Number(item.rate || 0);
+    } else {
+      row.querySelector("[data-sale-medicine]").value = medicine.id;
+    }
+    row.querySelector("[data-sale-qty]").value = Number(item.qty || 1);
+  });
+
+  form.querySelector("[name='patient']").value = state.patients.some((patient) => patient.id === sale.patientId) ? sale.patientId : "";
+  form.querySelector("[name='discountPercent']").value = Number(sale.discountPercent ?? (sale.subtotal ? Number(sale.discount || 0) / Number(sale.subtotal) * 100 : 0));
+  form.querySelector("[name='mode']").value = sale.mode || "Cash";
+  editingPharmacySaleId = sale.id;
+  document.getElementById("pharmacySaleSubmit").textContent = "Save Pharmacy Sale";
+  document.getElementById("cancelPharmacySaleEdit").hidden = false;
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+  updateSaleTotalPreview();
+}
+
+function cancelPharmacySaleEdit() {
+  const form = document.getElementById("pharmacySaleForm");
+  editingPharmacySaleId = null;
+  form.reset();
+  resetSaleItems();
+  document.getElementById("pharmacySaleSubmit").textContent = "Generate Pharmacy Bill";
+  document.getElementById("cancelPharmacySaleEdit").hidden = true;
+}
+
+async function deletePharmacySale(saleId) {
+  const sale = state.pharmacySales.find((item) => item.id === saleId);
+  if (!sale || !confirm(`Delete pharmacy sale ${sale.id} for ${sale.patientName}? Stock items will be returned to inventory.`)) return;
+
+  try {
+    state = await api(`/api/pharmacy-sales/${encodeURIComponent(saleId)}`, { method: "DELETE" });
+    apiOnline = true;
+    saveLastGoodState();
+    if (editingPharmacySaleId === saleId) cancelPharmacySaleEdit();
+    renderAll();
+  } catch (error) {
+    if (error.status) {
+      alert(error.message);
+      return;
+    }
+    apiOnline = false;
+    alert("Cannot delete this pharmacy sale while offline. Reconnect to the server and try again.");
+  }
 }
 
 function letterhead(title, id, date) {
@@ -811,27 +857,6 @@ function closePrintModal() {
   document.body.classList.remove("printing-modal");
   document.getElementById("printModal").classList.remove("open");
   document.getElementById("printModal").setAttribute("aria-hidden", "true");
-}
-
-function prescriptionDocument(prescription) {
-  const patient = recordPatientDetails(prescription);
-  return `${letterhead("Prescription", prescription.id, prescription.date)}
-    <div class="print-section">
-      <h4>Patient Details</h4>
-      <p><strong>${patient.name || prescription.patientId}</strong> | ${patient.age || "-"} / ${patient.gender || "-"} | ${patient.mobile || "-"}</p>
-    </div>
-    <div class="print-section">
-      <h4>Clinical Notes</h4>
-      <table class="print-table">
-        <tr><th>Symptoms</th><td>${prescription.symptoms || "-"}</td></tr>
-        <tr><th>Vitals</th><td>${prescription.vitals || "-"}</td></tr>
-        <tr><th>Diagnosis</th><td>${prescription.diagnosis || "-"}</td></tr>
-        <tr><th>Medicines</th><td>${String(prescription.medicines || "-").replace(/\n/g, "<br>")}</td></tr>
-        <tr><th>Tests</th><td>${prescription.tests || "-"}</td></tr>
-        <tr><th>Follow-up</th><td>${prescription.followup || "-"}</td></tr>
-      </table>
-    </div>
-    <div class="print-section"><p>Doctor Signature: ____________________</p></div>`;
 }
 
 function billDocument(bill) {
@@ -920,7 +945,7 @@ function pharmacyDocument(sale) {
       <h4>Payment</h4>
       <table class="print-table">
         <tr><th>Subtotal</th><td>${currency(sale.subtotal || items.reduce((sum, item) => sum + Number(item.total || 0), 0))}</td></tr>
-        <tr><th>Discount</th><td>${currency(sale.discount)}</td></tr>
+        <tr><th>Discount</th><td>${currency(sale.discount)} (${Number(sale.discountPercent ?? (sale.subtotal ? Number(sale.discount || 0) / Number(sale.subtotal) * 100 : 0))}%)</td></tr>
         <tr><th>Total</th><td>${currency(sale.total)}</td></tr>
         <tr><th>Mode</th><td>${sale.mode}</td></tr>
       </table>
@@ -1018,12 +1043,23 @@ document.getElementById("patientForm").addEventListener("submit", async (event) 
   await postData("/api/patients", data, (payload) => {
     const patient = { id: nextPatientId(state.patients), ...payload, status: "Waiting", createdAt: new Date().toISOString() };
     state.patients.unshift(patient);
-    selectedPatientId = patient.id;
   });
   resetForm(form);
 });
 
 document.addEventListener("click", (event) => {
+  const editPharmacyId = event.target.closest("[data-edit-pharmacy]")?.dataset.editPharmacy;
+  if (editPharmacyId) {
+    startEditingPharmacySale(editPharmacyId);
+    return;
+  }
+
+  const deletePharmacyId = event.target.closest("[data-delete-pharmacy]")?.dataset.deletePharmacy;
+  if (deletePharmacyId) {
+    deletePharmacySale(deletePharmacyId);
+    return;
+  }
+
   const deletePatientId = event.target.dataset.deletePatient;
   if (deletePatientId) {
     deletePatient(deletePatientId);
@@ -1033,6 +1069,13 @@ document.addEventListener("click", (event) => {
   const detailPatientId = event.target.closest("[data-patient-detail]")?.dataset.patientDetail;
   if (detailPatientId) {
     const patient = state.patients.find((item) => item.id === detailPatientId);
+    if (patient) openPrintModal("Patient Details", patientDetailDocument(patient));
+    return;
+  }
+
+  const printPatientId = event.target.closest("[data-print-patient]")?.dataset.printPatient;
+  if (printPatientId) {
+    const patient = state.patients.find((item) => item.id === printPatientId);
     if (patient) openPrintModal("Patient Details", patientDetailDocument(patient));
     return;
   }
@@ -1048,21 +1091,6 @@ document.addEventListener("click", (event) => {
     event.target.closest("[data-sale-item]")?.remove();
     if (!document.querySelector("[data-sale-item]")) addSaleItem("stock");
     updateSaleTotalPreview();
-    return;
-  }
-
-  const patientId = event.target.dataset.selectPatient;
-  if (patientId) {
-    selectedPatientId = patientId;
-    if (event.target.dataset.goDoctor) setView("doctor");
-    renderDoctor();
-    return;
-  }
-
-  const prescriptionId = event.target.dataset.printPrescription;
-  if (prescriptionId) {
-    const prescription = state.prescriptions.find((item) => item.id === prescriptionId);
-    if (prescription) openPrintModal("Prescription Print Preview", prescriptionDocument(prescription));
     return;
   }
 
@@ -1090,24 +1118,6 @@ document.getElementById("billForm").addEventListener("change", (event) => {
   const row = event.target.closest("[data-bill-item]");
   if (row && event.target.matches("[data-bill-service]")) updateBillItemRate(row);
   updateBillTotalPreview();
-});
-
-document.getElementById("prescriptionForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!selectedPatientId) return;
-  const form = event.currentTarget;
-  const data = { patientId: selectedPatientId, ...Object.fromEntries(new FormData(form)) };
-  await postData("/api/prescriptions", data, (payload) => {
-    const patient = state.patients.find((item) => item.id === selectedPatientId);
-    state.prescriptions.unshift({
-      id: `RX-${Date.now()}`,
-      date: new Date().toLocaleDateString("en-IN"),
-      ...payload,
-      patientDetails: patientSnapshot(patient, selectedPatientId)
-    });
-    if (patient) patient.status = "Completed";
-  });
-  resetForm(form);
 });
 
 document.getElementById("billForm").addEventListener("submit", async (event) => {
@@ -1174,6 +1184,27 @@ document.getElementById("pharmacySaleForm").addEventListener("submit", async (ev
   const form = event.currentTarget;
   const data = { ...Object.fromEntries(new FormData(form)), items: collectSaleItems() };
   if (!data.items.length) return;
+  if (editingPharmacySaleId) {
+    try {
+      state = await api(`/api/pharmacy-sales/${encodeURIComponent(editingPharmacySaleId)}`, {
+        method: "PUT",
+        body: JSON.stringify(data)
+      });
+      apiOnline = true;
+      saveLastGoodState();
+      cancelPharmacySaleEdit();
+      renderAll();
+    } catch (error) {
+      if (error.status) {
+        alert(error.message);
+        return;
+      }
+      apiOnline = false;
+      alert("Cannot edit this pharmacy sale while offline. Reconnect to the server and try again.");
+    }
+    return;
+  }
+
   const saved = await postData("/api/pharmacy-sales", data, (payload) => {
     const patient = state.patients.find((item) => item.id === payload.patient);
     const patientDetails = patientSnapshot(patient, payload.patient);
@@ -1203,7 +1234,8 @@ document.getElementById("pharmacySaleForm").addEventListener("submit", async (ev
     });
     if (items.some((item) => !item.medicineName || item.qty <= 0)) return;
     const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-    const discount = Number(payload.discount || 0);
+    const discountPercent = Math.min(Math.max(Number(payload.discountPercent || 0), 0), 100);
+    const discount = subtotal * discountPercent / 100;
     items.forEach((item) => {
       if (item.medicine) item.medicine.stock = Math.max(Number(item.medicine.stock) - item.qty, 0);
     });
@@ -1220,6 +1252,7 @@ document.getElementById("pharmacySaleForm").addEventListener("submit", async (ev
       items: items.map(({ medicine, ...item }) => item),
       subtotal,
       discount,
+      discountPercent,
       total: Math.max(subtotal - discount, 0),
       mode: payload.mode,
       date: new Date().toLocaleDateString("en-IN")
@@ -1230,6 +1263,8 @@ document.getElementById("pharmacySaleForm").addEventListener("submit", async (ev
     resetSaleItems();
   }
 });
+
+document.getElementById("cancelPharmacySaleEdit").addEventListener("click", cancelPharmacySaleEdit);
 
 document.getElementById("admissionForm").addEventListener("submit", async (event) => {
   event.preventDefault();
