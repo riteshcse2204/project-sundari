@@ -9,14 +9,6 @@
       "passwordHash": "d589774ffbbff4e96652daaf03d74002538c2d1db0295ec4dfb45c219113f3a77dcca27ae0d8b8662b2ea6cd8cada728e11b54caac1eb13d0e963d5ecacbc8b2"
     },
     {
-      "id": "USR-2",
-      "name": "Dr. Sharma",
-      "email": "doctor@sundaricare.local",
-      "role": "Doctor",
-      "passwordSalt": "08befaa459080391d4ee45906473a0a4",
-      "passwordHash": "01732475800fee66d2d1698c6cde043c762241707f1a04b3aa5e5ad54d64533184bdb20aa30bda66cde16eacacd9a8271e9bb82cc9502612be4e3bf2a142d6df"
-    },
-    {
       "id": "USR-3",
       "name": "Reception Desk",
       "email": "reception@sundaricare.local",
