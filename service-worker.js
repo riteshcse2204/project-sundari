@@ -1,4 +1,4 @@
-const CACHE_VERSION = "sundari-care-pwa-v3";
+const CACHE_VERSION = "sundari-care-pwa-v4";
 const APP_SHELL = [
   "/",
   "/index.html",
